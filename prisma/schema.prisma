@@ -1,0 +1,219 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model WatchTarget {
+  id         String        @id @default(cuid())
+  type       TargetType
+  code       String
+  name       String
+  tags       String        @default("[]")
+  reason     String        @default("")
+  enabled    Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  briefItems BriefItem[]
+  runs       AnalysisRun[]
+
+  @@unique([type, code])
+}
+
+model DailyBrief {
+  id          String      @id @default(cuid())
+  briefDate   String      @unique
+  status      BriefStatus
+  windowStart DateTime
+  windowEnd   DateTime
+  summary     String      @default("")
+  generatedAt DateTime    @default(now())
+  items       BriefItem[]
+  runs        AnalysisRun[]
+}
+
+model BriefItem {
+  id                String       @id @default(cuid())
+  briefId           String
+  targetId          String?
+  kind              BriefItemKind
+  title             String
+  source            String
+  publishedAt       DateTime
+  summary           String
+  rawRef            String
+  rawPayload        String?
+  normalizedPayload String?
+  detailText        String       @default("")
+  sourceEndpoint    String       @default("")
+  fetchedAt         DateTime     @default(now())
+  brief             DailyBrief   @relation(fields: [briefId], references: [id], onDelete: Cascade)
+  target            WatchTarget? @relation(fields: [targetId], references: [id], onDelete: SetNull)
+  runs              AnalysisRun[]
+}
+
+model SkillEntry {
+  id          String      @id @default(cuid())
+  key         String      @unique
+  name        String
+  description String
+  scope       SkillScope
+  status      SkillStatus @default(pending)
+  runs        AnalysisRun[]
+}
+
+model AnalysisRun {
+  id           String        @id @default(cuid())
+  skillKey     String
+  targetId     String?
+  briefItemId  String?
+  dailyBriefId String?
+  status       AnalysisStatus
+  inputContext String
+  output       String?
+  createdAt    DateTime      @default(now())
+  skill        SkillEntry    @relation(fields: [skillKey], references: [key])
+  target       WatchTarget?  @relation(fields: [targetId], references: [id], onDelete: SetNull)
+  briefItem    BriefItem?    @relation(fields: [briefItemId], references: [id], onDelete: SetNull)
+  dailyBrief   DailyBrief?   @relation(fields: [dailyBriefId], references: [id], onDelete: SetNull)
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model AgentRun {
+  id             String         @id @default(cuid())
+  question       String
+  skillKey       String
+  status         AgentRunStatus @default(created)
+  inputPayload   String         @default("{}")
+  promptPackage  String         @default("")
+  outputMarkdown String?
+  error          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  steps          AgentStep[]
+  skillRuns      SkillRun[]
+  evidence       EvidenceRecord[]
+}
+
+model AgentStep {
+  id         String          @id @default(cuid())
+  agentRunId String
+  order      Int
+  title      String
+  status     AgentStepStatus @default(pending)
+  message    String          @default("")
+  createdAt  DateTime        @default(now())
+  agentRun   AgentRun        @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+}
+
+model SkillRun {
+  id             String         @id @default(cuid())
+  agentRunId     String
+  skillKey       String
+  skillPath      String
+  status         SkillRunStatus @default(pending)
+  inputPayload   String         @default("{}")
+  promptPackage  String         @default("")
+  outputMarkdown String?
+  outputHtml     String?
+  error          String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  agentRun       AgentRun       @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  evidence       EvidenceRecord[]
+}
+
+model EvidenceRecord {
+  id             String       @id @default(cuid())
+  agentRunId     String
+  skillRunId     String?
+  kind           EvidenceKind
+  title          String
+  source         String
+  publishedAt    DateTime?
+  summary        String       @default("")
+  sourceEndpoint String       @default("")
+  rawPayload     String       @default("{}")
+  fetchedAt      DateTime     @default(now())
+  agentRun       AgentRun     @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  skillRun       SkillRun?    @relation(fields: [skillRunId], references: [id], onDelete: SetNull)
+}
+
+enum TargetType {
+  stock
+  sector
+}
+
+enum BriefStatus {
+  success
+  empty
+  failed
+}
+
+enum BriefItemKind {
+  news
+  research
+  announcement
+  event
+}
+
+enum SkillScope {
+  stock
+  sector
+  event
+  brief
+}
+
+enum SkillStatus {
+  pending
+  enabled
+}
+
+enum AnalysisStatus {
+  pending
+  completed
+  failed
+}
+
+enum AgentRunStatus {
+  created
+  planning
+  fetching_data
+  running_skill
+  completed
+  failed
+}
+
+enum AgentStepStatus {
+  pending
+  running
+  completed
+  failed
+}
+
+enum SkillRunStatus {
+  pending
+  running
+  completed
+  failed
+  skipped
+}
+
+enum EvidenceKind {
+  news
+  research
+  announcement
+  event
+  market
+  company
+  industry
+  raw
+}

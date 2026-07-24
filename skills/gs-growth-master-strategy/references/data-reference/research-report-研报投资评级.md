@@ -1,0 +1,111 @@
+# 研报投资评级
+
+---
+
+## 股票研报预测评级
+
+接口路径：`report/stock-forecast-ratings`  
+请求方式：`GET`  
+tool_id：`list_report_stock_forecast_ratings`
+
+接口说明：按股票代码和报告完成日期范围查询个股研究报告预测评级数据，返回 T+1/T+2/T+3 EPS 预测、净利润预测、评级描述、目标价字段、上次预测字段和研究机构信息。适用于盈利预测、PEG 分母辅助、预测样本整理和评级样本查询。
+
+**输入参数**
+
+| 参数名 | 必填 | 类型 | 说明 | 示例 |
+|---|:---:|---|---|---|
+| `stockCode` | ✅ | string | 股票代码 | `000001` |
+| `beginDate` | — | string | 起始日期，最小值 `2020-01-01` | `2025-01-01` |
+| `endDate` | — | string | 截止日期 | `2026-06-16` |
+| `pageNum` | — | integer | 页码，最小值 `1` | `1` |
+| `pageSize` | — | integer | 页长，最大值 `500`；默认轻量查询使用 `20`，完整报告可按需扩大 | `20` |
+
+**输出参数**
+
+| 字段名 | 说明 |
+|---|---|
+| `date` | 报告完成时间 |
+| `stockCode` | 股票代码 |
+| `stockName` | 股票名称 |
+| `guid` | 报告编号 |
+| `reportId` | 分析报告标识 |
+| `institutionCode` | 研究机构代码 |
+| `institutionName` | 机构简称 |
+| `reportTitle` | 报告标题 |
+| `tYear` | T 年 |
+| `epsForecastT1/T2/T3` | 报告中 T+1/T+2/T+3 年预测 EPS |
+| `epsForecastT1Prev/T2Prev/T3Prev` | 上次 T+1/T+2/T+3 年预测 EPS |
+| `ratingCurrent` | 报告中投资评级代码 |
+| `ratingDescription` | 报告中评级描述 |
+| `ratingDescriptionPrev` | 上次评级描述 |
+| `ratingPrev` | 上次投资评级代码 |
+| `targetPrice` | 报告中目标价 |
+| `targetPriceEx` | 目标价除权 |
+| `targetPriceExPrev` | 上次目标价除权 |
+| `netProfitForecastT1/T2/T3` | 报告中 T+1/T+2/T+3 年预测净利润 |
+| `netProfitForecastT1Prev/T2Prev/T3Prev` | 上次 T+1/T+2/T+3 年预测净利润 |
+
+**使用说明**
+
+- 未来预测样本应按报告完成时间和预测年份做口径核对。
+- `netProfitForecastT1/T2/T3` 可用于盈利预测或 PEG 分母计算的样本来源，但需要上层 Skill 做样本聚合和异常值处理。
+- 近期预测修正摘要优先基于本接口计算：对近 3 个月样本逐条比较同一预测期限的本次预测值与上次预测值，优先级为 T+1 净利润、T+2 净利润、T+3 净利润；若净利润不可比但 EPS 当前值和上次值可比，可使用同期限 EPS 作为补充。每条研报样本只计入一次。
+- 预测上调占比 = 上调样本数 / 可比预测修正样本数。可比预测修正样本是指本次预测值和上次预测值都存在且同期限可比的样本。
+- 若存在预测样本但 `netProfitForecastT1/T2/T3Prev` 和 `epsForecastT1/T2/T3Prev` 均不足以形成可比样本，只能输出“可比预测修正样本不足”，不得把预测样本直接写成未上调或无法确认。
+- `targetPrice` 和评级字段只作为研报数据展示，不输出目标价承诺或买卖建议。
+- 样本不足时保留字段并写“数据不足，无法判断”，不得用历史增速或向量片段补值。
+
+**接口示例**
+
+```bash
+node scripts/gs-api.js report/stock-forecast-ratings stockCode=000001 beginDate=2025-01-01 endDate=2026-06-16 pageNum=1 pageSize=20
+```
+
+---
+
+## 股票研报预测评级变动
+
+接口路径：`report/earnings-forecast-rating-cha`  
+请求方式：`GET`  
+tool_id：`get_report_earnings_forecast_rating`
+
+接口说明：按股票代码查询盈利预测、投资评级和目标价格变动数据，返回 T+1/T+2/T+3 盈利预测变动、评级变动、目标价变动及变动原因。适用于判断公开预测样本方向变化，但不直接生成投资建议。
+
+**输入参数**
+
+| 参数名 | 必填 | 类型 | 说明 | 示例 |
+|---|:---:|---|---|---|
+| `stockCode` | ✅ | string | 股票代码 | `000001` |
+
+**输出参数**
+
+| 字段名 | 说明 |
+|---|---|
+| `stockCode` | 股票代码 |
+| `stockName` | 股票名称 |
+| `guid` | 报告编号 |
+| `securityType` | 证券类型 |
+| `marketType` | 市场类型 |
+| `reportId` | 报告 ID |
+| `tPlus1YProfitForecastChg` | T+1 年盈利预测变动 |
+| `investRatingChg` | 投资评级变动 |
+| `targetPriceChg` | 目标价变动 |
+| `tPlus1YChangeReason` | T+1 年变动原因 |
+| `tPlus2YProfitForecastChg` | T+2 年盈利预测变动 |
+| `changeReasonT2Y` | T+2 年变动原因 |
+| `tPlus3YProfitForecastChg` | T+3 年盈利预测变动 |
+| `tPlus3YChangeReason` | T+3 年变动原因 |
+
+**使用说明**
+
+- 变动方向和原因只说明研报预测变化，不等同于公司真实业绩变化。
+- 本接口用于补充预测修正方向和原因；若 `report/stock-forecast-ratings` 已能形成可比预测修正样本，上调占比以可比样本聚合结果为准。
+- 当 `report/stock-forecast-ratings` 缺少上次预测值时，本接口可以补充“上调/下调/维持”的方向性证据，但若只返回单条或汇总记录，不得单独换算成“近3个月上调占比”。
+- 目标价变动字段不得用于输出目标价承诺。
+- 如果接口无返回，只能说明当前未取得变动记录。
+
+**接口示例**
+
+```bash
+node scripts/gs-api.js report/earnings-forecast-rating-cha stockCode=000001
+```

@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+dist
+coverage
+.env
+*.db
+*.db-journal
+*.log
+*.tsbuildinfo
+.next-stale-*
+.next-ui-*.png

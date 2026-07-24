@@ -1,0 +1,300 @@
+---
+name: investoday-industry-analysis
+title: "行业深度分析"
+version: "1.10.3"
+description: "面向 A 股行业研究、赛道和主题方向的深度分析 skill，围绕生命周期、周期属性、长期需求稳定性、发展空间、竞争结构、政策监管、A 股风险和价值投资适配性形成结构化判断。Use when: 用户要求完整行业深度分析、行业长期价值判断、主题/细分方向代理分析，或输入类似“深度分析半导体行业”“人形机器人空间怎么看”“AI 算力适不适合价值投资”。Do not use when: 用户只要基础行业数据查询、板块排名、单个接口结果、个股买卖建议、目标价、择时判断，或无法确认分析对象。"
+tags:
+  - investoday
+  - finance
+  - industry-analysis
+  - industry-research
+  - a-share
+  - value-investing
+  - policy-regulation
+  - competition-analysis
+metadata:
+  clawdbot:
+    emoji: "🏭"
+    category: "finance"
+    requires:
+      skills:
+        - investoday-finance-data
+        - industry-data
+    quality_pipeline:
+      type: role_pipeline
+      fallback: sequential_role_passes
+      subagent_invocation_format: "Spawn {codex_name} to {task}"
+      pipelines:
+        analysis:
+          - industry-analyst
+        no_agent_clarify: []
+        no_agent_handoff: []
+      route_agent_pipelines:
+        full_deep_analysis:
+          pipeline: analysis
+        lifecycle_analysis:
+          pipeline: analysis
+        cycle_attribute_analysis:
+          pipeline: analysis
+        demand_stability_analysis:
+          pipeline: analysis
+        growth_space_analysis:
+          pipeline: analysis
+        theme_proxy_analysis:
+          pipeline: analysis
+        competition_structure_analysis:
+          pipeline: analysis
+        policy_regulation_analysis:
+          pipeline: analysis
+        a_share_risk_analysis:
+          pipeline: analysis
+        value_investing_fit:
+          pipeline: analysis
+        clarify:
+          pipeline: no_agent_clarify
+        out_of_scope_handoff:
+          pipeline: no_agent_handoff
+requirements:
+  skills:
+    - name: investoday-finance-data
+    - name: industry-data
+  node: ">=18"
+  packages:
+    - name: "@investoday/investoday-api"
+    - name: "investoday-api"
+  network_access: true
+---
+
+# 行业深度分析
+
+本 skill 用于把行业基础数据、文本线索和分析框架整合成行业深度研究结论。它不是基础数据查询工具，而是在取得数据后，对行业长期属性、竞争质量、风险暴露和价值投资适配性做结构化判断。
+
+核心定位：分析型 L1 skill。先尽量完整取得行业数据，再按证据强弱输出结论。不得把样本估算、文本线索或短期行情包装成行业确定事实；不得输出买卖建议、目标价或择时判断。
+
+## 构建基准
+
+- 构建规范参考 skill：`investoday-skill-creator`
+- 文件结构参考 skill：`investoday-industry-data`
+- 数据获取依赖 skill：`investoday-finance-data`
+- 行业基础数据依赖 skill：`industry-data`
+
+`investoday-skill-creator` 只作为本 skill 的构建与维护基准；运行时分析优先调用 `$investoday-industry-data` 和 `$investoday-finance-data`。
+
+## 前置依赖
+
+- skill: `investoday-finance-data`
+- skill: `investoday-industry-data`
+- package: `@investoday/investoday-api`
+- node: `>=18`
+- cli: `investoday-api`
+
+## 典型场景
+
+- 对某个行业做完整深度分析，覆盖长期需求、空间、竞争、政策、风险和价值投资适配性
+- 判断行业处于导入期、成长期、成熟期、衰退期还是反转期
+- 判断行业强周期、弱周期、成长周期、政策周期或技术迭代周期属性
+- 分析行业长期需求稳定性、需求频率、刚性、价格弹性和替代风险
+- 分析行业天花板、渗透率、国产替代、出海空间和利润池扩张空间
+- 分析行业竞争结构、集中度、龙头稳定性、进入壁垒和价格战风险
+- 分析政策支持、监管约束、准入门槛、补贴退坡或合规压力
+- 分析 A 股特色风险，如估值拥挤、主题化炒作、流动性溢价、机构持仓拥挤和财务分类偏差
+- 判断行业是否适合价值投资，给出适配类型、主要前提和不适配原因
+
+## 不适合什么
+
+- 只查询行业估值、财务、行情、板块排名或产业链数据。这类请求优先使用 `$investoday-industry-data`
+- 个股基本面、商业模式和护城河分析。应交给公司级分析 skill
+- 买卖建议、目标价、仓位建议、短线择时或交易执行
+- 在没有行业名称、行业代码或可确认行业对象时强行分析
+- 在数据缺失时编造 CR3/CR5、市场空间、政策结论或长期增速
+
+## 输入要求
+
+### 可接受输入
+
+- 行业名称，如 `半导体`、`电力设备`、`创新药`
+- 行业代码，如 `640000`
+- 主题、赛道或细分方向，如 `人形机器人`、`AI 算力`、`低空经济`
+- 分析范围：全量深度分析，或指定一个/多个维度
+- 可选分析范围：行业分类体系、时间范围、是否偏 A 股视角、是否偏价值投资视角
+
+### 最小输入
+
+- 行业名称、行业代码、主题、赛道或细分方向
+
+### 推荐输入
+
+- 行业名称/代码 + 分析目标，例如 `从价值投资角度分析创新药行业`
+- 行业名称/代码 + 指定维度，例如 `重点看光伏设备的周期属性、竞争结构和 A 股特色风险`
+- 主题/赛道 + 分析目标，例如 `人形机器人发展空间和兑现程度怎么看`
+
+### 可选输入
+
+- 行业体系：如 `SW`、`INDUS1_CL`、`INDUS2_CL`、`INDUS4_CL`
+- 时间范围：如近 3 年、近 5 年、最近完整财年
+- 输出深度：摘要版、标准版、详细版
+- 证据偏好：数据表优先、文本线索优先、综合判断优先
+
+### 默认假设
+
+- 未指定分析范围时，默认覆盖 8 个核心维度。
+- 未指定行业分类体系时，优先使用 `$investoday-industry-data` 可解析的默认行业分类范围。
+- 未指定输出深度时，默认输出标准版：结论摘要、维度判断、关键证据、风险边界。
+- 所有时点数据以最新可得数据为准，并保留数据日期、报告期或文本来源日期。
+
+### 输入校验
+
+- 行业名称匹配到多个候选时，先列候选并请用户确认。
+- 行业代码无效或无返回时，说明未查询到对应行业，不猜测替代行业。
+- 用户输入主题、赛道或细分方向时，先尝试用 `$investoday-industry-data` 解析；若无法识别为独立行业但可映射到父行业、相关指数或 A 股上市公司样本，进入代理分析模式。
+- 用户只说“这个行业”且上下文不能确认对象时，先追问行业名称。
+- 用户要求投资建议、目标价或买卖结论时，转为行业质量、风险和适配性分析，不给交易指令。
+
+### 缺失输入处理
+
+- 缺少行业名称或行业代码：追问目标行业，不直接分析。
+- 缺少分析范围：默认进入全量行业深度分析。
+- 缺少行业分类体系：默认使用 `$investoday-industry-data` 可解析的行业分类范围；用户侧用行业名称和样本范围说明，不暴露内部字段。
+- 输入对象不是标准行业但可映射到相关父行业、指数或上市公司样本：进入主题/细分方向代理分析模式。
+- 请求明显不适用本 skill：转交到更合适的 skill 或说明无法处理的边界。
+
+### 示例输入
+
+```text
+帮我深度分析半导体行业，重点看生命周期、竞争结构和价值投资适配性
+```
+
+```text
+从 A 股特色风险和政策监管角度分析创新药行业
+```
+
+### 反例输入
+
+```text
+今天哪个行业涨得最好
+```
+
+原因：这是板块排名或基础行情查询，不应触发当前 skill，应优先转交 `$investoday-industry-data`。
+
+## 意图路由
+
+意图路由只在 frontmatter `description` 已经触发本 skill 后使用，用于决定本次执行哪条分析路径；初始触发仍由 `description` 负责。
+
+| route id | 用户意图 | 必要输入 | 必读 reference | Agent 自动触发 | 进入工作流 | 输出 |
+|---|---|---|---|---|---|---|
+| `full_deep_analysis` | 全量行业深度分析 | 行业名称或代码 | `docs/references-index.md` | `Spawn industry_analyst to run full industry deep analysis` | 获取行业基础数据后逐项读取 8 个维度 reference | 8 维综合分析报告 |
+| `lifecycle_analysis` | 行业生命周期分析 | 行业名称或代码 | `references/行业生命周期分析/分析框架.md` | `Spawn industry_analyst to analyze industry lifecycle` | 获取预测、景气、财务和文本线索 | 生命周期标签、证据、边界 |
+| `cycle_attribute_analysis` | 行业周期属性分析 | 行业名称或代码 | `references/行业周期属性分析/分析框架.md` | `Spawn industry_analyst to analyze industry cycle attributes` | 获取盈利波动、行情波动和宏观线索 | 周期类型、驱动因子、风险 |
+| `demand_stability_analysis` | 行业长期需求稳定性分析 | 行业名称或代码 | `references/行业长期需求稳定性分析/分析框架.md` | `Spawn industry_analyst to analyze long term demand stability` | 获取需求文本、财务稳定性和替代线索 | 需求稳定性等级与依据 |
+| `growth_space_analysis` | 行业发展空间分析 | 行业名称或代码 | `references/行业发展空间分析/分析框架.md` | `Spawn industry_analyst to analyze industry growth space` | 获取市场空间、渗透率、产业链和预测数据 | 天花板、空间来源、约束 |
+| `theme_proxy_analysis` | 主题/赛道/细分方向代理分析 | 主题、赛道或细分方向 | `references/行业发展空间分析/分析框架.md` + `references/数据口径/数据依赖与获取口径.md` | `Spawn industry_analyst to analyze theme proxy mapping and evidence quality` | 先尝试标准行业解析；无法识别为独立行业但可映射时，使用父行业、相关指数或 A 股上市公司样本做代理，并降级证据 | 代理映射、代理边界、潜在空间、需求/订单/业绩/估值兑现程度、概念溢价 |
+| `competition_structure_analysis` | 行业竞争结构分析 | 行业名称或代码 | `references/行业竞争结构分析/分析框架.md` | `Spawn industry_analyst to analyze competition structure` | 获取竞争结构摘要、财务排名、成分股和文本线索 | 集中度、壁垒、价格战、龙头稳定性 |
+| `policy_regulation_analysis` | 行业政策与监管环境分析 | 行业名称或代码 | `references/行业政策与监管环境分析/分析框架.md` | `Spawn industry_analyst to analyze policy and regulation environment` | 获取政策新闻、研报、公告和监管事件 | 政策方向、监管强度、敏感点 |
+| `a_share_risk_analysis` | A 股特色风险分析 | 行业名称或代码 | `references/A股特色风险分析/分析框架.md` | `Spawn industry_analyst to analyze A share specific risks` | 获取估值、行情、资金、持仓和样本质量数据 | A 股风险清单与证据 |
+| `value_investing_fit` | 价值投资适配性分析 | 行业名称或代码 | `references/价值投资适配性分析/分析框架.md` | `Spawn industry_analyst to analyze value investing fit` | 先汇总前 7 个维度，再形成适配性判断 | 适配类型、前提、反证 |
+| `clarify` | 缺失输入处理 | 缺失项本身 | `references/input-requirements-standard.md` | 不 Spawn；当前模型追问必要输入 | 追问行业、分析范围或数据范围 | 待补充问题 |
+| `out_of_scope_handoff` | 不适用请求转交 | 用户原始请求 | `references/intent-routing-standard.md` | 不 Spawn；当前模型说明转交边界 | 转交 `$investoday-industry-data` 或公司级 skill | 转交说明 |
+
+## 主题/细分方向代理分析
+
+当用户输入的对象不是标准行业，而是主题、赛道或细分方向时，例如 `人形机器人`、`AI 算力`、`低空经济`，应先尝试用 `$investoday-industry-data` 解析。
+
+若无法识别为独立行业，但可映射到父行业、相关指数或 A 股上市公司样本，应进入代理分析模式，并必须输出：
+
+1. 标准行业映射：说明使用哪个父行业、相关指数或 A 股上市公司样本作为代理；内部行业代码只用于取数，不在用户侧输出。
+2. 代理边界：明确父行业、相关指数或样本数据不能直接等同于主题真实数据。
+3. 证据降级：父行业估值、财务、行情只能作为 P1 代理证据，不得直接作为主题主结论。
+4. 文本线索要求：主题相关订单、量产、政策、新闻必须列明标题、发布方、日期和支持判断，且必须满足“数据来源边界”。
+5. 无法验证项：列出当前缺失的 TAM、渗透率、真实收入占比、订单转收入、利润率等关键数据。
+6. 结论措辞：只能输出“潜在空间大/中/小”“需求兑现程度高/中/低”“订单兑现程度高/中/低”“业绩兑现程度高/中/低”“估值兑现程度高/中/低”“概念溢价高/中/低”等带明确对象的判断，不得在缺少 P0/P1 主题数据时写成“空间已经验证很大”。
+
+代理分析模式下，核心结论必须把“主题自身证据”和“父行业/样本代理证据”分开列示。
+
+## 决策流程
+
+1. 确认行业对象：优先用 `$investoday-industry-data` 的行业列表能力解析行业名称、行业分类和可用指数映射；这些内部字段只用于取数，不在用户侧输出。
+2. 取得基础数据：按问题需要读取估值、财务、盈利、景气、预测、行情、产业链、竞争结构和文本增强数据。
+3. 分维度读取 reference：用户指定维度时只读对应 reference；全量分析时读取 `docs/references-index.md` 后逐项读取 8 个维度文件。
+4. 区分证据层级：直接披露数据优先，结构化接口次之，文本线索和样本估算必须标注来源、样本范围和估算边界。
+5. 输出判断：每个维度都给出标签、关键证据、反证或不确定性，不只堆数据。
+6. 汇总适配性：价值投资适配性必须建立在生命周期、需求稳定性、竞争结构、政策风险和 A 股特色风险的前置判断之上。
+7. 失败处理：接口无数据、文本证据不足或样本不完整时，明确写出缺口，不补造结论。
+
+## 数据来源边界
+
+本 skill 的行业分析数据只能来自以下来源：
+
+1. `$investoday-industry-data`
+2. `$investoday-finance-data`
+3. 用户在当前对话中显式提供的文件、文本或数据
+
+新闻、研报、公告、政策文件、监管问询、处罚信息、行情、估值、财务、持仓、宏观数据等，也必须通过 `$investoday-industry-data` 或 `$investoday-finance-data` 返回的数据获得。
+
+不得使用模型记忆、外部网页搜索、未标来源资料或非 Investoday 数据接口的数据作为证据。本 skill 明确禁止联网搜索和外部网页补充资料；即使用户希望使用外部资料，也只能使用用户在当前对话中显式提供的文件、文本或数据。若用户只提供外部链接而未提供内容，不得把链接内容作为证据。
+
+若使用用户显式提供的数据，必须标注为“用户提供资料”，不得与 Investoday 接口数据混同。
+
+## 输出约束
+
+- 默认输出顺序：核心结论、维度分析、关键证据表、主要风险、待验证事项。
+- 结论必须绑定证据，避免只给抽象形容词。
+- 核心结论不能停留在“空间大但取决于公司质量”这类泛化表达；在证据允许时，应给出行业内部环节的研究排序、利润兑现差异或风险排序，例如“制造环节业绩兑现更充分”“系统集成环节利润兑现压力更大”。这类排序只能是行业环节层面的研究判断，不得延伸为个股买卖、持有、仓位或回避建议。
+- 涉及“兑现程度”时必须说明兑现对象：需求兑现、订单兑现、收入兑现、利润兑现、现金流兑现或估值兑现，不得单独使用含义不明的“兑现程度高/中/低”。
+- 关键数据之后必须写出数据含义，尤其要识别“量利双升”“增收不增利”“收入下滑但利润修复”“毛利率承压但现金流改善”等经营特征，并说明其对竞争结构、盈利稳定性或价值投资适配性的影响。
+- 同一产业链内部有多个环节时，必须尽量做横向对比：收入增速、利润增速、毛利率、净利率、现金流、资本开支、应收账款或回款压力等指标应与环节结论一一对应。
+- 所有证据必须满足“数据来源边界”；新闻、研报和公告也必须来自 Investoday 数据接口或用户显式提供资料。
+- 用户侧输出不得暴露内部接口字段或技术字段，例如 `industryCode`、`indexCode`、接口路径、请求参数、字段名、内部层级编号；使用“分析范围”“样本范围”“数据范围”“来源说明”等自然语言表达。
+- 只有直接披露的数据或同一统计范围下可验证的数据可以作为主结论使用；文本线索、样本估算和代理指标只能作为辅助证据。
+- 结构化接口数据不展示接口名称、接口路径或内部来源字段，只展示指标名称、数值、日期/报告期和数据范围。
+- 通过新闻、研报、公告、政策文件等文本获取的数据，输出时必须说明文献来源，至少包含来源类型、标题、发布方、日期和支持的判断。
+- Investoday 只能作为数据通道，不得作为文献发布方；不得写“Investoday 研报文本”“Investoday 新闻文本”。文本证据必须标注一手来源或原始署名机构，例如券商、研究机构、媒体、交易所、监管部门、上市公司等。
+- 估算数据必须声明为估算，并写明估算方式、样本范围、关键假设和可能偏差。
+- 涉及市场份额、CR3/CR5、渗透率、空间测算时，必须说明统计范围、时间和数据来源。
+- 涉及 A 股特色风险时，区分行业基本面风险和二级市场定价/交易结构风险。
+- 价值投资适配性只能输出“适配类型、适配前提、不适配风险、观察指标”，不得输出买入、卖出、持有、仓位或目标价。
+
+## 合规表达规则
+
+输出应使用研究结论口吻，避免个人化、劝导式或容易被理解为投资建议的表达。
+
+禁止或弱化以下表达：
+
+- “我选”“我认为可以买”“不是不能看”“可以关注”“适合买入”“值得配置”“长期持有”
+- “明显低估”“大概率上涨”“政策托底所以安全”“跌多了就有机会”
+- 任何暗示买入、卖出、持有、仓位、目标价或择时的表述
+
+推荐表达：
+
+- “若按行业属性分类，当前更适合归入……，但需附加……标签。”
+- “当前证据更支持……判断，但结论依赖……验证。”
+- “该行业仍具备研究价值，但不宜仅基于跌幅、估值或政策托底作出乐观判断。”
+- “现阶段只能说明……风险路径和影响方向，不能推导为配置建议。”
+
+当用户使用二选一问题时，可以给出分类判断，但必须使用“按当前证据/按行业属性分类/更接近”的研究语言，不得写成个人选择。
+
+## 默认输出骨架
+
+除非用户明确要求极简回答，默认使用稳定的总分总结构：
+
+1. 总：一句话结论 + 1-3 个核心理由 + 主要风险提示。
+2. 分：按分论点展开，每个分论点内部使用“判断句 -> 支撑逻辑 -> 关键证据 -> 数据含义 -> 反向风险/约束条件”的连续论证结构，不把核心判断、支撑逻辑和关键证据拆成彼此割裂的段落。
+3. 再总：当前判断 + 后续观察/验证指标。
+4. 风险提示：单独列出不可忽略的风险和不确定性。
+5. 数据来源附录：仅列有明确文献信息的研报、新闻、公告、政策文件等文本证据，以及用户显式提供资料；结构化指标不单独列来源，不展示接口名、获取渠道或内部字段。
+
+## 指定维度分析的最小输出要求
+
+当用户只指定部分维度时，不需要输出 8 维完整报告，但必须包含：
+
+1. 分析对象与范围：说明行业名称、行业分类体系、使用的是 A 股上市公司样本、指数样本还是行业整体数据。
+2. 核心结论：每个指定维度至少 1 条结论，结论必须绑定证据。
+3. 数据范围与证据等级表：至少包含维度、证据层级、指标/文本线索、日期/报告期、数据范围/样本范围、是否可作主结论；若证据来自研报、新闻、公告或政策文件，还必须补充来源类型、来源标题和发布方。
+4. 指定维度分析：每个维度包含标签、判断、关键证据、反证/不确定性。
+5. 风险与待验证事项：明确哪些结论依赖文本线索、第三方估算或样本数据。
+6. 禁止事项：不得输出买入、卖出、持有、仓位、目标价或择时判断。
+
+## 辅助文档
+
+- Reference 索引：`docs/references-index.md`
+- 数据口径：`references/数据口径/数据依赖与获取口径.md`
+- 综合输出：`references/综合输出/报告结构.md`

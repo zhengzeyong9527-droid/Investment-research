@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>贵州茅台研报解读</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --panel-soft: #f2f5f9;
+      --text: #172033;
+      --muted: #667085;
+      --line: #d9e0ea;
+      --accent: #2454a6;
+      --accent-soft: #e8eef9;
+      --good: #13795b;
+      --warn: #b45309;
+      --bad: #b42318;
+      --radius: 8px;
+      --shadow: 0 10px 28px rgba(23, 32, 51, 0.08);
+      --max: min(1180px, calc(100% - 32px));
+      --font: "PingFang SC", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: var(--font);
+      line-height: 1.72;
+    }
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid var(--line);
+      background: rgba(247, 248, 251, 0.92);
+      backdrop-filter: blur(12px);
+    }
+    .nav-inner {
+      width: var(--max);
+      min-height: 58px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+    .brand {
+      font-weight: 800;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+    .tabs {
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+      flex: 1;
+    }
+    .tabs a {
+      padding: 8px 10px;
+      border-radius: 6px;
+      color: var(--muted);
+      text-decoration: none;
+      white-space: nowrap;
+      font-size: 14px;
+    }
+    .tabs a:hover {
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+    main {
+      width: var(--max);
+      margin: 0 auto;
+      padding: 26px 0 44px;
+    }
+    .hero, .metric, .section, .note, footer {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+    .hero {
+      padding: 28px 30px;
+      border-left: 4px solid var(--accent);
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 30px;
+      line-height: 1.32;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 30px 0 14px;
+      font-size: 21px;
+      letter-spacing: 0;
+    }
+    h3 {
+      margin: 0 0 8px;
+      font-size: 17px;
+      letter-spacing: 0;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .summary {
+      margin: 16px 0 0;
+      max-width: 920px;
+      color: #344054;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .metric {
+      padding: 16px;
+      min-height: 104px;
+    }
+    .metric-label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .metric-value {
+      margin-top: 8px;
+      font-size: 24px;
+      font-weight: 850;
+      font-variant-numeric: tabular-nums;
+    }
+    .metric small {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .section {
+      padding: 18px;
+    }
+    .section p {
+      margin: 0;
+      color: #344054;
+    }
+    .section ul {
+      margin: 8px 0 0;
+      padding-left: 20px;
+      color: #344054;
+    }
+    .section li + li { margin-top: 6px; }
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      background: var(--panel-soft);
+      color: #344054;
+      font-size: 13px;
+    }
+    .tag.good { color: var(--good); background: #e8f5ef; }
+    .tag.warn { color: var(--warn); background: #fff4e5; }
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+    table {
+      width: 100%;
+      min-width: 1080px;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 12px 13px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      color: #101828;
+      background: #eef3fb;
+      font-weight: 800;
+    }
+    tr:last-child td { border-bottom: 0; }
+    .muted { color: var(--muted); }
+    .good { color: var(--good); font-weight: 700; }
+    .warn { color: var(--warn); font-weight: 700; }
+    .bad { color: var(--bad); font-weight: 700; }
+    .note {
+      margin-top: 14px;
+      padding: 14px 16px;
+      color: #344054;
+      background: #fff;
+    }
+    footer {
+      margin-top: 26px;
+      padding: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    @media (max-width: 900px) {
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      :root { --max: min(100% - 24px, 1180px); }
+      .nav-inner { flex-wrap: wrap; padding: 8px 0; }
+      .tabs { flex-basis: 100%; }
+      .hero { padding: 22px 18px; }
+      h1 { font-size: 24px; }
+      .metrics { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="nav-inner">
+      <div class="brand">今日投资｜研报解读</div>
+      <div class="tabs">
+        <a href="#summary">概览</a>
+        <a href="#sentiment">研报舆情</a>
+        <a href="#views">观点风险</a>
+        <a href="#forecast">预测明细</a>
+        <a href="#sources">来源</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero" id="summary">
+      <h1>贵州茅台研报解读</h1>
+      <div class="meta">
+        <span>报告日期：<strong>2026-07-10</strong></span>
+        <span>查询对象：<strong>贵州茅台 600519</strong></span>
+        <span>数据来源：<strong>今日投资研报库</strong></span>
+        <span>样本范围：<strong>2025-07-10 至 2026-07-10</strong></span>
+      </div>
+      <p class="summary">
+        当前研报样本显示，机构关注焦点集中在市场化改革、i茅台直连 C 端、价格与渠道体系重塑、股东回报和行业筑底修复。结论强度依赖当前取得的研报、舆情和预测评级样本，不构成投资建议。
+      </p>
+    </section>
+
+    <section class="metrics" aria-label="样本指标">
+      <article class="metric">
+        <div class="metric-label">研报列表样本</div>
+        <div class="metric-value">20</div>
+        <small>最近研报：2026-06-15</small>
+      </article>
+      <article class="metric">
+        <div class="metric-label">预测评级样本</div>
+        <div class="metric-value">100</div>
+        <small>去重机构：51 家</small>
+      </article>
+      <article class="metric">
+        <div class="metric-label">目标价有效样本</div>
+        <div class="metric-value">18</div>
+        <small>区间：1525 - 2100 元</small>
+      </article>
+      <article class="metric">
+        <div class="metric-label">目标价均值</div>
+        <div class="metric-value">1732.19</div>
+        <small>仅统计可解析数值样本</small>
+      </article>
+    </section>
+
+    <div class="note">
+      近 12 个月取得 20 篇贵州茅台相关研报列表样本，覆盖国泰海通证券、华创证券、招商证券、兴业证券、国海证券、Goldman Sachs、方正证券、中金公司等机构；预测评级样本 100 条，最近预测样本日期为 2026-06-15。
+    </div>
+
+    <h2 id="sentiment">近期研报舆情</h2>
+    <section class="grid">
+      <article class="section">
+        <h3>舆情概览</h3>
+        <p>近期舆情样本多来自食品饮料和白酒行业研报，情绪分值主要为 4-5。核心表述集中在白酒板块低位修复、库存出清、龙头挺价与回购、估值低位和中报业绩催化。</p>
+        <div class="tag-row">
+          <span class="tag good">情绪偏正面</span>
+          <span class="tag">白酒筑底</span>
+          <span class="tag">中报催化</span>
+          <span class="tag">估值修复</span>
+        </div>
+      </article>
+      <article class="section">
+        <h3>风险信号</h3>
+        <p>舆情样本同时反复提示批价波动、库存去化不及预期、需求复苏弱于预期、食品安全、宏观经济和政策变化等风险。部分舆情为行业层面，不等同于贵州茅台单家公司事实确认。</p>
+        <div class="tag-row">
+          <span class="tag warn">批价波动</span>
+          <span class="tag warn">需求复苏</span>
+          <span class="tag warn">库存去化</span>
+          <span class="tag warn">政策风险</span>
+        </div>
+      </article>
+    </section>
+
+    <h2 id="views">研报观点、分歧与风险</h2>
+    <section class="grid">
+      <article class="section">
+        <h3>核心共识</h3>
+        <ul>
+          <li>市场化改革是近期最核心主线，国泰海通、华创、招商、兴业等报告均围绕价格机制、渠道生态和全流程市场化展开。</li>
+          <li>i茅台被多家机构视为触达 C 端、稳定价格体系、提升用户数据能力的重要抓手。</li>
+          <li>机构普遍强调公司品牌、现金流、股东回报和高端白酒龙头地位仍是长期研究基础。</li>
+        </ul>
+      </article>
+      <article class="section">
+        <h3>主要分歧</h3>
+        <ul>
+          <li>对改革释放业绩弹性的节奏存在差异：华创、兴业偏强调经营拐点和市场化改革成效；部分舆情样本仍强调行业处于去库和需求修复阶段。</li>
+          <li>对价格弹性的表述存在强弱差异：华创、国海、兴业均提到价格或批价修复可能性，但国泰海通下调目标价，体现估值口径和板块流动性约束仍需纳入判断。</li>
+          <li>当前样本未形成对公司长期品牌力的明显反向分歧，分歧主要集中在短期需求、价格和报表修复节奏。</li>
+        </ul>
+      </article>
+      <article class="section">
+        <h3>关注重点 / 跟踪指标</h3>
+        <ul>
+          <li>i茅台用户、订单、投放节奏及其对直销收入的贡献。</li>
+          <li>飞天茅台批价和终端零售价的稳定性。</li>
+          <li>系列酒 2+N 产品体系、国际化和年轻化推进效果。</li>
+          <li>渠道库存、合同负债、经销商盈利和股东回报执行情况。</li>
+        </ul>
+      </article>
+      <article class="section">
+        <h3>主要风险</h3>
+        <ul>
+          <li>消费复苏不及预期、宏观需求持续疲软。</li>
+          <li>批价大幅波动、库存去化慢于预期或渠道信心受损。</li>
+          <li>市场化改革执行效果弱于预期。</li>
+          <li>政策变化、食品安全、外资流出或机构被动减仓等扰动。</li>
+        </ul>
+      </article>
+    </section>
+
+    <h2 id="forecast">预测评级与盈利预测</h2>
+    <section class="section">
+      <h3>预测数据总结</h3>
+      <p>
+        近 12 个月取得 100 条预测评级样本，按机构去重后覆盖 51 家机构。最新去重机构样本中，18 条目标价为可解析数值，区间为 1525-2100 元，平均值为 1732.19 元；空值、未披露和不可解析样本未纳入均值计算。评级分布以“买入/Buy”类表述为主，但不同机构评级体系不可直接等同。最新 5 家机构样本显示，评级多为维持，EPS 多为小幅上修或持平；部分除权目标价口径下调，趋势结论需结合机构口径差异理解。
+      </p>
+    </section>
+
+    <section class="table-wrap" aria-label="预测评级与盈利预测明细">
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>机构</th>
+            <th>研报</th>
+            <th>评级</th>
+            <th>目标价</th>
+            <th>2026 EPS</th>
+            <th>2027 EPS</th>
+            <th>2028 EPS</th>
+            <th>2026 净利润预测</th>
+            <th>预测/评级变化</th>
+            <th>支持的判断</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>2026-06-15</td>
+            <td>国泰海通证券</td>
+            <td>贵州茅台更新报告：C端引领 全流程市场化</td>
+            <td>增持</td>
+            <td>1739.4</td>
+            <td>66.90</td>
+            <td>70.36</td>
+            <td>73.88</td>
+            <td>836.36 亿元</td>
+            <td>EPS 小幅上修，评级维持；除权目标价下调</td>
+            <td>市场化改革覆盖全产业链、全流程，i茅台提升触达能力</td>
+          </tr>
+          <tr>
+            <td>2026-06-14</td>
+            <td>华创证券</td>
+            <td>贵州茅台2025年度股东大会点评：股东会传递信心 凝聚价值共识</td>
+            <td>强推</td>
+            <td>2030</td>
+            <td>67.74</td>
+            <td>70.77</td>
+            <td>73.84</td>
+            <td>846.86 亿元</td>
+            <td>EPS、评级、目标价维持</td>
+            <td>股东会传递长期战略信心，市场化改革笃定前行</td>
+          </tr>
+          <tr>
+            <td>2026-06-14</td>
+            <td>招商证券</td>
+            <td>贵州茅台：以消费者为锚 改革红利徐徐释放</td>
+            <td>强烈推荐</td>
+            <td>—</td>
+            <td>68.03</td>
+            <td>72.14</td>
+            <td>75.89</td>
+            <td>850.42 亿元</td>
+            <td>EPS 小幅上修，评级维持；目标价未披露</td>
+            <td>消费者为锚，价格机制从被动应对转向主动管控</td>
+          </tr>
+          <tr>
+            <td>2026-06-12</td>
+            <td>Goldman Sachs</td>
+            <td>Kweichow Moutai(600519.SS): Reiterated market-oriented reforms...</td>
+            <td>买入</td>
+            <td>1616</td>
+            <td>67.07</td>
+            <td>71.96</td>
+            <td>—</td>
+            <td>838.43 亿元</td>
+            <td>EPS、评级、目标价基本维持；T+1 净利略降</td>
+            <td>市场化改革和 i-Moutai 用户触达能力仍为核心判断</td>
+          </tr>
+          <tr>
+            <td>2026-06-12</td>
+            <td>兴业证券</td>
+            <td>贵州茅台：改革破局 轻舟已过万重山</td>
+            <td>买入</td>
+            <td>—</td>
+            <td>68.99</td>
+            <td>73.11</td>
+            <td>78.16</td>
+            <td>862.48 亿元</td>
+            <td>EPS 小幅上修，评级维持；目标价未披露</td>
+            <td>全链路市场化改革、批价稳定和高分红支撑长期价值</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <h2>综合结论</h2>
+    <section class="section">
+      <ul>
+        <li>当前研报样本对贵州茅台的核心关注，从传统渠道/批价逻辑转向“市场化改革 + C 端运营 + 价格机制 + 股东回报”的综合框架。</li>
+        <li>最新预测评级样本整体偏正面，目标价有效样本均值为 1732.19 元，但目标价仅为机构样本字段，不代表收益承诺。</li>
+        <li>需要重点观察改革执行、i茅台放量质量、批价稳定性、库存和需求复苏节奏；这些变量决定后续研报观点能否继续强化。</li>
+      </ul>
+    </section>
+
+    <h2 id="sources">数据来源与代表性研报</h2>
+    <section class="table-wrap" aria-label="数据来源与代表性研报">
+      <table>
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>发布机构</th>
+            <th>研报标题</th>
+            <th>评级</th>
+            <th>目标价</th>
+            <th>用途</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>2026-06-15</td>
+            <td>国泰海通证券</td>
+            <td>贵州茅台更新报告：C端引领 全流程市场化</td>
+            <td>增持</td>
+            <td>1739.4</td>
+            <td>观点、预测评级</td>
+          </tr>
+          <tr>
+            <td>2026-06-14</td>
+            <td>华创证券</td>
+            <td>贵州茅台2025年度股东大会点评：股东会传递信心 凝聚价值共识</td>
+            <td>强推</td>
+            <td>2030</td>
+            <td>观点、预测评级</td>
+          </tr>
+          <tr>
+            <td>2026-06-14</td>
+            <td>招商证券</td>
+            <td>贵州茅台：以消费者为锚 改革红利徐徐释放</td>
+            <td>强烈推荐</td>
+            <td>—</td>
+            <td>观点、预测评级</td>
+          </tr>
+          <tr>
+            <td>2026-06-12</td>
+            <td>兴业证券</td>
+            <td>贵州茅台：改革破局 轻舟已过万重山</td>
+            <td>买入</td>
+            <td>—</td>
+            <td>观点、预测评级</td>
+          </tr>
+          <tr>
+            <td>2026-06-12</td>
+            <td>国海证券</td>
+            <td>贵州茅台事件点评：不竭泽而渔 不骛于虚表</td>
+            <td>买入</td>
+            <td>—</td>
+            <td>观点、风险</td>
+          </tr>
+          <tr>
+            <td>2026-07-08</td>
+            <td>研报舆情样本</td>
+            <td>食品饮料板块低位反弹 关注中报业绩催化</td>
+            <td>—</td>
+            <td>—</td>
+            <td>近期研报舆情</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      本报告基于今日投资研报库当前可得样本生成，仅用于研究参考。研报观点、评级、目标价、EPS 和净利润预测均来自机构样本，不代表确定性判断，也不构成投资建议、交易指令或收益承诺。市场有风险，投资需谨慎。
+    </footer>
+  </main>
+</body>
+</html>
