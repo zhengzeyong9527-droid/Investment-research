@@ -6,14 +6,14 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchJson } from "@/components/workbench/api";
 import { MarketChart } from "@/components/workbench/market-chart";
-import type { MarketCandle, MarketIndexQuote, MarketIndustryQuote, MarketIntradayTick, MarketOverview, MarketTimeframe } from "@/components/workbench/types";
+import type { MarketCandle, MarketIndexQuote, MarketIndustryQuote, MarketOverview, MarketTimeframe } from "@/components/workbench/types";
 
 const UP_COLOR = "#d84b3a";
 const DOWN_COLOR = "#0d9b7f";
 const FLAT_COLOR = "#8aa0a5";
 
 const TIMEFRAME_LABELS: Array<{ value: MarketTimeframe; label: string; ariaLabel: string }> = [
-  { value: "intraday", label: "分时", ariaLabel: "指数分时图" },
+  { value: "intraday", label: "分时K", ariaLabel: "指数分时K图" },
   { value: "daily", label: "日K", ariaLabel: "指数日K图" },
   { value: "weekly", label: "周K", ariaLabel: "指数周K图" },
   { value: "monthly", label: "月K", ariaLabel: "指数月K图" },
@@ -36,9 +36,8 @@ export function MarketOverviewView({
   const [overview, setOverview] = useState<MarketOverview | null>(null);
   const [loading, setLocalLoading] = useState(true);
   const [error, setError] = useState("");
-  const [timeframe, setTimeframe] = useState<MarketTimeframe>("daily");
+  const [timeframe, setTimeframe] = useState<MarketTimeframe>("intraday");
   const [indicators, setIndicators] = useState<IndicatorState>({ ma: true, boll: false, macd: false });
-  const [intradayTicks, setIntradayTicks] = useState<Record<string, MarketIntradayTick[]>>({});
 
   const loadOverview = useCallback(
     async (indexCode: string, quiet = false) => {
@@ -49,7 +48,6 @@ export function MarketOverviewView({
       try {
         const data = await fetchJson<MarketOverview>(`/api/market-overview?indexCode=${indexCode}`);
         setOverview(data);
-        setIntradayTicks((previous) => appendIntradayTicks(previous, data.indexQuotes));
         setError("");
         setNotice(data.sourceErrors.length > 0 ? `大盘数据已刷新，${data.sourceErrors.length} 个来源暂不可用` : `大盘数据已刷新 ${data.updatedAt}`);
       } catch {
@@ -76,30 +74,23 @@ export function MarketOverviewView({
   }, [loadOverview, selectedIndexCode]);
 
   const selectedQuote = overview?.indexQuotes.find((quote) => quote.code === overview.selectedIndexCode) ?? overview?.indexQuotes[0] ?? null;
-  const selectedTicks = useMemo(() => {
-    if (!selectedQuote) return [];
-    const ticks = intradayTicks[selectedQuote.code] ?? [];
-    return ticks.length > 0 ? ticks : tickFromQuote(selectedQuote);
-  }, [intradayTicks, selectedQuote]);
   const activeCandles = useMemo(() => {
     if (!overview) return [];
+    if (timeframe === "intraday") return overview.chartSeries.intraday;
     if (timeframe === "weekly") return overview.chartSeries.weekly;
     if (timeframe === "monthly") return overview.chartSeries.monthly;
     return overview.chartSeries.daily;
   }, [overview, timeframe]);
   const timeframeMeta = TIMEFRAME_LABELS.find((item) => item.value === timeframe) ?? TIMEFRAME_LABELS[1];
   const mainChartOption = useMemo(
-    () => (timeframe === "intraday" ? buildIntradayOption(selectedTicks, selectedQuote) : buildCandleOption(activeCandles, indicators)),
-    [activeCandles, indicators, selectedQuote, selectedTicks, timeframe]
+    () => buildCandleOption(activeCandles, indicators, timeframe),
+    [activeCandles, indicators, timeframe]
   );
   const breadthOption = useMemo(() => buildBreadthOption(overview), [overview]);
   const todayBubbleOption = useMemo(() => buildIndustryBubbleOption(overview?.industries ?? [], "today"), [overview]);
   const weeklyBubbleOption = useMemo(() => buildIndustryBubbleOption(overview?.industries ?? [], "weekly"), [overview]);
-  const marketTemperature = useMemo(() => calculateMarketTemperature(overview), [overview]);
   const fundBands = useMemo(() => buildFundBands(overview?.industries ?? []), [overview]);
   const profitGaugeOption = useMemo(() => buildGaugeOption("赚钱效应", overview?.breadth.upRatio ?? 0, UP_COLOR), [overview]);
-  const temperatureGaugeOption = useMemo(() => buildGaugeOption("盘面温度", marketTemperature.temperature, "#b57a20"), [marketTemperature.temperature]);
-  const extremeGaugeOption = useMemo(() => buildGaugeOption("极端波动", overview?.breadth.extremeRatio ?? 0, "#b57a20"), [overview]);
 
   if (loading && !overview) {
     return <MarketSkeleton />;
@@ -166,7 +157,7 @@ export function MarketOverviewView({
               </span>
               {quote.code === overview.selectedIndexCode && overview.indexMetrics.rangeGains && (
                 <span className="market-range-line">
-                  1周 {formatPercent(overview.indexMetrics.rangeGains.return1w)} / YTD {formatPercent(overview.indexMetrics.rangeGains.returnYtd)}
+                  过去一周 {formatPercent(overview.indexMetrics.rangeGains.return1w)} · 今年以来 {formatPercent(overview.indexMetrics.rangeGains.returnYtd)}
                 </span>
               )}
             </button>
@@ -208,26 +199,28 @@ export function MarketOverviewView({
             </div>
             <span className="market-mini-pill">{selectedQuote ? `${selectedQuote.name} ${formatPercent(selectedQuote.changeRatio)} · ${timeframeMeta.label}` : "指数"}</span>
           </div>
-          <IndexMetricStrip overview={overview} />
-          <MarketChart ariaLabel={timeframeMeta.ariaLabel} option={mainChartOption} className="h-[470px] max-md:h-[360px]" />
+          <RangePerformanceStrip overview={overview} />
+          <div className="relative">
+            {timeframe === "intraday" && activeCandles.length === 0 && (
+              <div className="market-empty-chart">
+                <strong>分时K暂不可用</strong>
+                <span>东方财富公开行情未返回分钟K，日K、周K、月K仍可查看。</span>
+              </div>
+            )}
+            <MarketChart ariaLabel={timeframeMeta.ariaLabel} option={mainChartOption} className="h-[470px] max-md:h-[360px]" />
+          </div>
         </section>
 
         <aside className="grid gap-5">
           <section className="market-glass market-panel p-4">
             <PanelHeader title="赚钱效应" meta={`${overview.breadth.up} 涨 / ${overview.breadth.down} 跌`} />
             <MarketChart ariaLabel="赚钱效应仪表盘" option={profitGaugeOption} className="h-[220px]" />
-          </section>
-          <section className="market-glass market-panel p-4">
-            <PanelHeader title="盘面温度" meta={`情绪 ${formatPercent(marketTemperature.sentimentAverage)}`} />
-            <MarketChart ariaLabel="盘面温度仪表盘" option={temperatureGaugeOption} className="h-[220px]" />
-          </section>
-          <section className="market-glass market-panel p-4">
-            <PanelHeader title="极端波动" meta={`涨停 ${overview.breadth.upLimit} / 跌停 ${overview.breadth.downLimit}`} />
-            <MarketChart ariaLabel="极端波动仪表盘" option={extremeGaugeOption} className="h-[220px]" />
+            <p className="market-panel-note">口径：全市场上涨家数 / 全市场样本家数，来源 market/change-ratio-status。</p>
           </section>
           <section className="market-glass market-panel p-4">
             <PanelHeader title="涨跌分布" meta={`样本 ${overview.breadth.total}`} />
             <MarketChart ariaLabel="涨跌分布阶梯图" option={breadthOption} className="h-[230px]" />
+            <p className="market-panel-note">口径：全市场个股按涨跌幅区间分桶，红为上涨、绿为下跌。</p>
           </section>
         </aside>
       </div>
@@ -245,7 +238,7 @@ export function MarketOverviewView({
       </div>
 
       <section className="market-glass market-panel p-4">
-        <PanelHeader title="资金温度带" meta="按 5日主力净流强度排序" />
+        <PanelHeader title="行业资金流向" meta="按 5日主力净流强度排序" />
         <div className="market-fund-band">
           {fundBands.map((item) => (
             <div key={item.code} className="market-fund-row" title={`${item.name} 5日主力净流 ${formatFundFlow(item.value)}`}>
@@ -267,7 +260,9 @@ export function MarketOverviewView({
       </section>
 
       <section className="market-source-strip">
-        <span>数据来源：index-quote/realtime、index/quotes、index/range-gains、index/valuation、market/change-ratio-status、industry-quote/realtime-v2、industry/rotation、industry/market-stats</span>
+        <span>分时K：东方财富公开行情 1分钟 OHLCV；日/周/月K：今日投资 index/quotes，周/月本地聚合。</span>
+        <span>区间涨跌：{overview.indexMetrics.rangeGains?.sourceLabel ?? "今日投资 index/range-gains"}，单位：%。</span>
+        <span>行业气泡：industry-quote/realtime-v2 + industry/market-stats；涨跌分布：market/change-ratio-status。</span>
         {overview.sourceErrors.length > 0 && <span className="text-persimmon">暂缺：{overview.sourceErrors.join(", ")}</span>}
       </section>
     </div>
@@ -283,61 +278,30 @@ function PanelHeader({ title, meta }: { title: string; meta: string }) {
   );
 }
 
-function IndexMetricStrip({ overview }: { overview: MarketOverview }) {
-  const valuation = overview.indexMetrics.valuation;
+function RangePerformanceStrip({ overview }: { overview: MarketOverview }) {
   const range = overview.indexMetrics.rangeGains;
+  const items = [
+    { label: "今日", value: range?.return1d ?? null },
+    { label: "过去一周", value: range?.return1w ?? null },
+    { label: "过去一月", value: range?.return1m ?? null },
+    { label: "今年以来", value: range?.returnYtd ?? null },
+  ];
   return (
-    <div className="market-metric-grid mb-3">
-      <span className="market-metric-capsule">1日 {formatPercent(range?.return1d ?? null)}</span>
-      <span className="market-metric-capsule">1周 {formatPercent(range?.return1w ?? null)}</span>
-      <span className="market-metric-capsule">1月 {formatPercent(range?.return1m ?? null)}</span>
-      <span className="market-metric-capsule">YTD {formatPercent(range?.returnYtd ?? null)}</span>
-      <span className="market-metric-capsule">PE {formatFixed(valuation?.pe, 2)}</span>
-      <span className="market-metric-capsule">PB {formatFixed(valuation?.pb, 2)}</span>
-      <span className="market-metric-capsule">PE百分位 {formatPercent(valuation?.peRank5y ?? null)}</span>
-      <span className="market-metric-capsule">股息率 {formatPercent(valuation?.dividendYield ?? null)}</span>
+    <div className="market-range-panel mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4>区间表现</h4>
+        <span>单位：%；{range?.sourceLabel ?? "今日投资 index/range-gains"}</span>
+      </div>
+      <div className="market-range-grid">
+        {items.map((item) => (
+          <span key={item.label} className="market-range-card">
+            <small>{item.label}</small>
+            <strong className={marketValueClass(item.value)}>{formatPercent(item.value)}</strong>
+          </span>
+        ))}
+      </div>
     </div>
   );
-}
-
-function tickFromQuote(quote: MarketIndexQuote): MarketIntradayTick[] {
-  if (!quote.dataTime || quote.current === null) return [];
-  return [
-    {
-      time: quote.dataTime,
-      price: quote.current,
-      previousClose: quote.previousClose,
-      changeRatio: quote.changeRatio,
-      amount: quote.amount,
-    },
-  ];
-}
-
-function appendIntradayTicks(current: Record<string, MarketIntradayTick[]>, quotes: MarketIndexQuote[]) {
-  const next = { ...current };
-  for (const quote of quotes) {
-    const tick = tickFromQuote(quote)[0];
-    if (!tick) continue;
-    const existing = next[quote.code] ?? [];
-    if (existing.some((item) => item.time === tick.time)) {
-      next[quote.code] = existing;
-      continue;
-    }
-    next[quote.code] = [...existing, tick].slice(-240);
-  }
-  return next;
-}
-
-function calculateMarketTemperature(overview: MarketOverview | null) {
-  const sentimentValues = (overview?.industries ?? [])
-    .map((industry) => industry.signal?.marketSentiment)
-    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-  const sentimentAverage = sentimentValues.length > 0 ? sentimentValues.reduce((sum, value) => sum + value, 0) / sentimentValues.length : 0;
-  const breadthRatio = overview?.breadth.upRatio ?? 0;
-  return {
-    sentimentAverage,
-    temperature: clampRatio(sentimentAverage * 0.62 + breadthRatio * 0.38),
-  };
 }
 
 function buildFundBands(industries: MarketIndustryQuote[]) {
@@ -378,15 +342,16 @@ function MarketSkeleton() {
   );
 }
 
-function buildCandleOption(candles: MarketCandle[], indicators: IndicatorState): EChartsOption {
-  const dates = candles.map((item) => item.date);
+function buildCandleOption(candles: MarketCandle[], indicators: IndicatorState, timeframe: MarketTimeframe): EChartsOption {
+  const dates = candles.map((item) => (timeframe === "intraday" ? item.date.slice(11, 16) || item.date : item.date));
   const candleData = candles.map((item) => [item.open, item.close, item.low, item.high]);
   const volumes = candles.map((item) => item.volume ?? 0);
   const hasMacd = indicators.macd;
+  const dataZoomStart = timeframe === "intraday" ? 0 : 48;
   const xAxisIndexes = hasMacd ? [0, 1, 2] : [0, 1];
   const series: NonNullable<EChartsOption["series"]> = [
     {
-      name: "K线",
+      name: timeframe === "intraday" ? "分时K" : "K线",
       type: "candlestick",
       data: candleData,
       itemStyle: { color: UP_COLOR, color0: DOWN_COLOR, borderColor: UP_COLOR, borderColor0: DOWN_COLOR },
@@ -469,42 +434,10 @@ function buildCandleOption(candles: MarketCandle[], indicators: IndicatorState):
       ...(hasMacd ? [{ scale: true, gridIndex: 2, splitNumber: 2, axisLabel: { show: false }, splitLine: { show: false } }] : []),
     ],
     dataZoom: [
-      { type: "inside", xAxisIndex: xAxisIndexes, start: 48, end: 100 },
-      { show: false, xAxisIndex: xAxisIndexes, start: 48, end: 100 },
+      { type: "inside", xAxisIndex: xAxisIndexes, start: dataZoomStart, end: 100 },
+      { show: false, xAxisIndex: xAxisIndexes, start: dataZoomStart, end: 100 },
     ],
     series,
-  } as EChartsOption;
-}
-
-function buildIntradayOption(ticks: MarketIntradayTick[], quote: MarketIndexQuote | null): EChartsOption {
-  const data = ticks.map((tick) => [tick.time.slice(11, 16), tick.price]);
-  const previousClose = quote?.previousClose ?? ticks.find((tick) => tick.previousClose !== null)?.previousClose ?? null;
-  return {
-    animation: true,
-    tooltip: {
-      trigger: "axis",
-      formatter: (params: unknown) => {
-        const item = Array.isArray(params) ? (params[0] as { data?: [string, number] } | undefined) : undefined;
-        const price = item?.data?.[1] ?? quote?.current ?? null;
-        return `分时<br/>${item?.data?.[0] ?? "--"} ${formatNumber(price)}`;
-      },
-    },
-    grid: { left: 44, right: 18, top: 28, bottom: 38 },
-    xAxis: { type: "category", data: data.map((item) => item[0]), boundaryGap: false, axisLine: { lineStyle: { color: "rgba(21,34,37,.16)" } }, axisLabel: { color: "rgba(21,34,37,.48)" } },
-    yAxis: { type: "value", scale: true, splitLine: { lineStyle: { color: "rgba(21,34,37,.08)" } }, axisLabel: { color: "rgba(21,34,37,.48)" } },
-    series: [
-      {
-        name: "分时",
-        type: "line",
-        data: data.map((item) => item[1]),
-        showSymbol: data.length <= 8,
-        smooth: true,
-        lineStyle: { width: 2, color: quote?.changeRatio !== null && quote?.changeRatio !== undefined && quote.changeRatio >= 0 ? UP_COLOR : DOWN_COLOR },
-        areaStyle: { color: quote?.changeRatio !== null && quote?.changeRatio !== undefined && quote.changeRatio >= 0 ? "rgba(216,75,58,.12)" : "rgba(13,155,127,.12)" },
-        markPoint: { data: [{ type: "max", name: "高" }, { type: "min", name: "低" }] },
-        markLine: previousClose === null ? undefined : { symbol: "none", lineStyle: { color: "rgba(21,34,37,.32)", type: "dashed" }, data: [{ yAxis: previousClose, name: "昨收" }] },
-      },
-    ],
   } as EChartsOption;
 }
 
@@ -575,7 +508,6 @@ function buildIndustryBubbleOption(industries: MarketIndustryQuote[], mode: "tod
       item.stockUp,
       item.stockDown,
       fundFlow,
-      item.signal?.marketSentiment ?? null,
     ];
   });
   const getBubbleData = (params: unknown) => {
@@ -591,11 +523,10 @@ function buildIndustryBubbleOption(industries: MarketIndustryQuote[], mode: "tod
     const up = Number(item[4] ?? 0);
     const down = Number(item[5] ?? 0);
     const flow = Number(item[6] ?? 0);
-    const sentiment = typeof item[7] === "number" ? item[7] : null;
     if (mode === "today") {
-    return `${name}<br/>今日涨跌 ${xValue.toFixed(2)}%<br/>上涨占比 ${yValue.toFixed(1)}%<br/>上涨 ${up} / 下跌 ${down}<br/>5日主力净流 ${formatFundFlow(flow)}<br/>市场温度 ${formatPercent(sentiment)}`;
+      return `${name}<br/>今日涨跌 ${xValue.toFixed(2)}%<br/>上涨占比 ${yValue.toFixed(1)}%<br/>上涨 ${up} / 下跌 ${down}<br/>5日主力净流 ${formatFundFlow(flow)}`;
     }
-    return `${name}<br/>近一周 ${xValue.toFixed(2)}%<br/>5日主力净流 ${formatFundFlow(yValue)}<br/>上涨 ${up} / 下跌 ${down}<br/>市场温度 ${formatPercent(sentiment)}`;
+    return `${name}<br/>近一周涨跌 ${xValue.toFixed(2)}%<br/>5日主力净流 ${formatFundFlow(yValue)}<br/>上涨 ${up} / 下跌 ${down}`;
   };
   return {
     tooltip: {
@@ -699,14 +630,9 @@ function roundValue(value: number, digits: number) {
   return Number(value.toFixed(digits));
 }
 
-function clampRatio(value: number | null | undefined) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, value));
-}
-
-function formatFixed(value: number | null | undefined, digits: number) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "--";
-  return value.toFixed(digits);
+function marketValueClass(value: number | null) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value === 0) return "market-flat";
+  return value > 0 ? "market-up" : "market-down";
 }
 
 function formatNumber(value: number | null) {

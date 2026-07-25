@@ -100,6 +100,9 @@ const sampleMarketOverview: MarketOverview = {
     { date: "2026-07-24", open: 3853.63, close: 3829.11, low: 3816.48, high: 3861.04, previousClose: 3876.78, volume: 434786455, amount: 789106691786 },
   ],
   chartSeries: {
+    intraday: [
+      { date: "2026-07-24 09:31", open: 3853.63, close: 3845.13, low: 3845.13, high: 3854.94, previousClose: null, volume: 19774082, amount: 31193776896 },
+    ],
     daily: [
       { date: "2026-07-23", open: 3868.08, close: 3876.78, low: 3851.7, high: 3878.83, previousClose: 3867.03, volume: 56212260100, amount: 1025875517700 },
       { date: "2026-07-24", open: 3853.63, close: 3829.11, low: 3816.48, high: 3861.04, previousClose: 3876.78, volume: 434786455, amount: 789106691786 },
@@ -146,8 +149,6 @@ const sampleMarketOverview: MarketOverview = {
       leadStockCode: "600519",
       leadStockName: "贵州茅台",
       signal: {
-        marketSentiment: 0.64,
-        styleMomentum: 1,
         return1d: 0.0112,
         return1w: 0.024,
         return1m: 0.052,
@@ -171,18 +172,8 @@ const sampleMarketOverview: MarketOverview = {
       return6m: -0.012,
       return1y: 0.082,
       returnYtd: 0.123,
-    },
-    valuation: {
-      code: "000001",
-      name: "上证指数",
-      date: "2026-07-23",
-      marketValue: 10306712250.2484,
-      pe: 16.777,
-      pb: 1.3466,
-      peRank5y: 0.8579,
-      pbRank5y: 0.7008,
-      turnoverRate: 0.0118,
-      dividendYield: 0.0238,
+      source: "investoday",
+      sourceLabel: "今日投资 index/range-gains",
     },
   },
 };

@@ -6,11 +6,10 @@ export type {
   MarketChartSeries,
   MarketIndexQuote,
   MarketIndexRangeGain,
-  MarketIndexValuation,
   MarketIndustryQuote,
   MarketIndustrySignal,
-  MarketIntradayTick,
   MarketOverview,
+  MarketRangeGainSource,
   MarketTimeframe,
 } from "@/lib/market-overview";
 

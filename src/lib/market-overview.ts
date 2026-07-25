@@ -1,6 +1,15 @@
 import { defaultCommandRunner, type CommandRunner } from "@/lib/investoday";
 
 export const DEFAULT_MARKET_INDEX_CODES = ["000001", "399001", "399006", "000300", "000905", "000852"] as const;
+const EASTMONEY_INTRADAY_SOURCE = "eastmoney/intraday-kline";
+const EASTMONEY_INDEX_SECIDS: Record<(typeof DEFAULT_MARKET_INDEX_CODES)[number], string> = {
+  "000001": "1.000001",
+  "399001": "0.399001",
+  "399006": "0.399006",
+  "000300": "1.000300",
+  "000905": "1.000905",
+  "000852": "1.000852",
+};
 
 export type MarketIndexQuote = {
   code: string;
@@ -29,19 +38,14 @@ export type MarketCandle = {
 
 export type MarketTimeframe = "intraday" | "daily" | "weekly" | "monthly";
 
-export type MarketIntradayTick = {
-  time: string;
-  price: number;
-  previousClose: number | null;
-  changeRatio: number | null;
-  amount: number | null;
-};
-
 export type MarketChartSeries = {
+  intraday: MarketCandle[];
   daily: MarketCandle[];
   weekly: MarketCandle[];
   monthly: MarketCandle[];
 };
+
+export type MarketRangeGainSource = "investoday" | "computed" | "mixed";
 
 export type MarketIndexRangeGain = {
   code: string;
@@ -53,24 +57,11 @@ export type MarketIndexRangeGain = {
   return6m: number | null;
   return1y: number | null;
   returnYtd: number | null;
-};
-
-export type MarketIndexValuation = {
-  code: string;
-  name: string;
-  date: string;
-  marketValue: number | null;
-  pe: number | null;
-  pb: number | null;
-  peRank5y: number | null;
-  pbRank5y: number | null;
-  turnoverRate: number | null;
-  dividendYield: number | null;
+  source: MarketRangeGainSource;
+  sourceLabel: string;
 };
 
 export type MarketIndustrySignal = {
-  marketSentiment: number | null;
-  styleMomentum: number | null;
   return1d: number | null;
   return1w: number | null;
   return1m: number | null;
@@ -124,16 +115,18 @@ export type MarketOverview = {
   industries: MarketIndustryQuote[];
   indexMetrics: {
     rangeGains: MarketIndexRangeGain | null;
-    valuation: MarketIndexValuation | null;
   };
   updatedAt: string;
   sourceErrors: string[];
 };
 
+type ExternalFetcher = (url: string, init?: RequestInit) => Promise<Response>;
+
 type FetchMarketOverviewInput = {
   indexCode?: string;
   now?: Date;
   run?: CommandRunner;
+  fetchExternal?: ExternalFetcher;
 };
 
 type SourceResult<T> = {
@@ -147,9 +140,8 @@ export async function fetchMarketOverview(input: FetchMarketOverviewInput = {}):
   const selectedIndexCode = sanitizeIndexCode(input.indexCode);
   const beginDate = dateParam(addDays(now, -900));
   const endDate = dateParam(now);
-  const signalBeginDate = dateParam(addDays(now, -7));
 
-  const [indexQuoteResult, candleResult, breadthResult, industryResult, rangeGainResult, valuationResult] = await Promise.all([
+  const [indexQuoteResult, candleResult, breadthResult, industryResult, rangeGainResult, intradayResult] = await Promise.all([
     fetchJsonArray(run, "index-quote/realtime", [
       "--method",
       "POST",
@@ -175,7 +167,7 @@ export async function fetchMarketOverview(input: FetchMarketOverviewInput = {}):
       JSON.stringify({ industryCodes: [] }),
     ]),
     fetchJsonRecord(run, "index/range-gains", [`indexCode=${selectedIndexCode}`]),
-    fetchJsonArray(run, "index/valuation", [`indexCode=${selectedIndexCode}`, "pageNum=1", "pageSize=5"]),
+    fetchEastmoneyIntradayCandles(selectedIndexCode, input.fetchExternal),
   ]);
 
   const indexQuotes = indexQuoteResult.data.map(normalizeIndexQuote).filter((item): item is MarketIndexQuote => Boolean(item));
@@ -185,6 +177,7 @@ export async function fetchMarketOverview(input: FetchMarketOverviewInput = {}):
     selectedQuote
   );
   const chartSeries = {
+    intraday: intradayResult.data,
     daily: candles,
     weekly: aggregateCandles(candles, "weekly"),
     monthly: aggregateCandles(candles, "monthly"),
@@ -194,8 +187,12 @@ export async function fetchMarketOverview(input: FetchMarketOverviewInput = {}):
     .map(normalizeIndustry)
     .filter((item): item is MarketIndustryQuote => Boolean(item))
     .sort((a, b) => b.changeRatio - a.changeRatio);
-  const industrySignalResult = await enrichIndustriesWithSignals(baseIndustries, run, signalBeginDate, endDate);
-  const sourceErrors = [indexQuoteResult, candleResult, breadthResult, industryResult, rangeGainResult, valuationResult]
+  const industrySignalResult = await enrichIndustriesWithSignals(baseIndustries, run);
+  const rangeGains = mergeRangeGain(
+    normalizeRangeGain(rangeGainResult.data),
+    buildComputedRangeGain(candles, selectedQuote, selectedIndexCode)
+  );
+  const sourceErrors = [indexQuoteResult, candleResult, breadthResult, industryResult, rangeGainResult, intradayResult]
     .map((result) => result.error)
     .filter((error): error is string => Boolean(error))
     .concat(industrySignalResult.sourceErrors);
@@ -208,8 +205,7 @@ export async function fetchMarketOverview(input: FetchMarketOverviewInput = {}):
     breadth,
     industries: industrySignalResult.industries,
     indexMetrics: {
-      rangeGains: normalizeRangeGain(rangeGainResult.data),
-      valuation: normalizeLatestValuation(valuationResult.data),
+      rangeGains,
     },
     updatedAt: selectedQuote?.dataTime || firstNonEmpty(indexQuotes.map((quote) => quote.dataTime)) || breadth.dataTime || toDateTime(now),
     sourceErrors: unique(sourceErrors),
@@ -243,6 +239,69 @@ async function fetchJsonRecord(run: CommandRunner, endpoint: string, args: strin
   } catch {
     return { data: {}, error: endpoint };
   }
+}
+
+async function fetchEastmoneyIntradayCandles(indexCode: string, fetchExternal?: ExternalFetcher): Promise<SourceResult<MarketCandle[]>> {
+  const secid = EASTMONEY_INDEX_SECIDS[sanitizeIndexCode(indexCode) as (typeof DEFAULT_MARKET_INDEX_CODES)[number]];
+  const fetcher = fetchExternal ?? globalThis.fetch?.bind(globalThis);
+  if (!secid || !fetcher) {
+    return { data: [], error: EASTMONEY_INTRADAY_SOURCE };
+  }
+
+  const url = new URL("https://push2his.eastmoney.com/api/qt/stock/kline/get");
+  url.searchParams.set("secid", secid);
+  url.searchParams.set("fields1", "f1,f2,f3,f4,f5,f6");
+  url.searchParams.set("fields2", "f51,f52,f53,f54,f55,f56,f57,f58");
+  url.searchParams.set("klt", "1");
+  url.searchParams.set("fqt", "1");
+  url.searchParams.set("end", "20500101");
+  url.searchParams.set("lmt", "320");
+
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timeout = controller ? setTimeout(() => controller.abort(), 8_000) : null;
+  try {
+    const response = await fetcher(url.toString(), {
+      cache: "no-store",
+      headers: { accept: "application/json,text/plain,*/*" },
+      signal: controller?.signal,
+    });
+    if (!response.ok) return { data: [], error: EASTMONEY_INTRADAY_SOURCE };
+    const payload = await response.json();
+    const data = isRecord(payload) && isRecord(payload.data) ? payload.data : {};
+    const klines = Array.isArray(data.klines) ? data.klines : [];
+    const candles = klines
+      .map(normalizeEastmoneyIntradayKline)
+      .filter((item): item is MarketCandle => Boolean(item))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const latestDate = dateOnly(candles.at(-1)?.date);
+    const latestCandles = latestDate ? candles.filter((item) => dateOnly(item.date) === latestDate) : candles;
+    return { data: latestCandles.slice(-300) };
+  } catch {
+    return { data: [], error: EASTMONEY_INTRADAY_SOURCE };
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function normalizeEastmoneyIntradayKline(row: unknown): MarketCandle | null {
+  const parts = stringValue(row).split(",");
+  if (parts.length < 7) return null;
+  const date = stringValue(parts[0]);
+  const open = numberOrNull(parts[1]);
+  const close = numberOrNull(parts[2]);
+  const high = numberOrNull(parts[3]);
+  const low = numberOrNull(parts[4]);
+  if (!date || open === null || close === null || high === null || low === null) return null;
+  return {
+    date,
+    open,
+    close,
+    high,
+    low,
+    previousClose: null,
+    volume: numberOrNull(parts[5]),
+    amount: numberOrNull(parts[6]),
+  };
 }
 
 function normalizeIndexQuote(item: Record<string, unknown>): MarketIndexQuote | null {
@@ -295,27 +354,85 @@ function normalizeRangeGain(item: Record<string, unknown>): MarketIndexRangeGain
     return6m: percentPointToRatio(item.return6mPct),
     return1y: percentPointToRatio(item.return1yPct),
     returnYtd: percentPointToRatio(item.returnYtdPct),
+    source: "investoday",
+    sourceLabel: "今日投资 index/range-gains",
   };
 }
 
-function normalizeLatestValuation(items: Array<Record<string, unknown>>): MarketIndexValuation | null {
-  const sorted = [...items].sort((a, b) => dateOnly(b.date).localeCompare(dateOnly(a.date)));
-  const item = sorted[0];
-  if (!item) return null;
-  const code = stringValue(item.indexCode);
-  if (!code) return null;
+const RANGE_GAIN_KEYS = ["return1d", "return1w", "return1m", "return3m", "return6m", "return1y", "returnYtd"] as const;
+
+function mergeRangeGain(primary: MarketIndexRangeGain | null, fallback: MarketIndexRangeGain | null): MarketIndexRangeGain | null {
+  if (!primary) return fallback;
+  if (!fallback) return primary;
+  const merged: MarketIndexRangeGain = { ...primary };
+  let usedFallback = false;
+  let hasPrimaryValue = false;
+  for (const key of RANGE_GAIN_KEYS) {
+    if (primary[key] !== null) {
+      hasPrimaryValue = true;
+      continue;
+    }
+    if (fallback[key] !== null) {
+      merged[key] = fallback[key];
+      usedFallback = true;
+    }
+  }
+  if (usedFallback && hasPrimaryValue) {
+    merged.source = "mixed";
+    merged.sourceLabel = "今日投资 index/range-gains，缺失项按日K收盘价计算";
+  } else if (usedFallback && !hasPrimaryValue) {
+    merged.source = "computed";
+    merged.sourceLabel = "按今日投资 index/quotes 日K收盘价计算";
+  }
+  return merged;
+}
+
+function buildComputedRangeGain(
+  candles: MarketCandle[],
+  quote: MarketIndexQuote | null,
+  selectedIndexCode: string
+): MarketIndexRangeGain | null {
+  const sorted = [...candles].sort((a, b) => a.date.localeCompare(b.date));
+  const latest = sorted.at(-1);
+  if (!latest) return null;
+  const latestClose = latest.close;
+  const latestDate = dateOnly(latest.date);
+  const previousCandle = sorted.at(-2);
+  const return1d = quote?.changeRatio ?? ratio(latestClose, latest.previousClose ?? previousCandle?.close ?? null);
+  const yearStart = `${latestDate.slice(0, 4)}-01-01`;
+  const ytdBase =
+    [...sorted].reverse().find((item) => dateOnly(item.date) < yearStart)?.close ??
+    sorted.find((item) => dateOnly(item.date) >= yearStart)?.close ??
+    null;
   return {
-    code,
-    name: stringValue(item.indexName) || code,
-    date: dateOnly(item.date),
-    marketValue: numberOrNull(item.indexMarketValue),
-    pe: numberOrNull(item.pe ?? item.PE),
-    pb: numberOrNull(item.pb ?? item.PB),
-    peRank5y: numberOrNull(item.peRank5y),
-    pbRank5y: numberOrNull(item.pbRank5y),
-    turnoverRate: numberOrNull(item.turnoverRate),
-    dividendYield: numberOrNull(item.divYield ?? item.dividendYield),
+    code: selectedIndexCode,
+    name: quote?.name || selectedIndexCode,
+    return1d: roundedRatioOrNull(return1d),
+    return1w: ratio(latestClose, closeAtOrBefore(sorted, latestDate, 7)),
+    return1m: ratio(latestClose, closeAtOrBefore(sorted, latestDate, 30)),
+    return3m: ratio(latestClose, closeAtOrBefore(sorted, latestDate, 90)),
+    return6m: ratio(latestClose, closeAtOrBefore(sorted, latestDate, 180)),
+    return1y: ratio(latestClose, closeAtOrBefore(sorted, latestDate, 365)),
+    returnYtd: ratio(latestClose, ytdBase),
+    source: "computed",
+    sourceLabel: "按今日投资 index/quotes 日K收盘价计算",
   };
+}
+
+function closeAtOrBefore(candles: MarketCandle[], latestDate: string, daysBefore: number) {
+  const target = parseUtcDate(latestDate);
+  target.setUTCDate(target.getUTCDate() - daysBefore);
+  const targetKey = dateParam(target);
+  return [...candles].reverse().find((item) => dateOnly(item.date) <= targetKey)?.close ?? null;
+}
+
+function ratio(current: number, baseline: number | null | undefined) {
+  if (baseline === null || baseline === undefined || baseline === 0) return null;
+  return roundedRatioOrNull(current / baseline - 1);
+}
+
+function roundedRatioOrNull(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? roundRatio(value) : null;
 }
 
 function normalizeBreadth(item: Record<string, unknown>): MarketBreadth {
@@ -379,45 +496,30 @@ function normalizeIndustry(item: Record<string, unknown>): MarketIndustryQuote |
 
 async function enrichIndustriesWithSignals(
   industries: MarketIndustryQuote[],
-  run: CommandRunner,
-  beginDate: string,
-  endDate: string
+  run: CommandRunner
 ): Promise<{ industries: MarketIndustryQuote[]; sourceErrors: string[] }> {
   const errors = new Set<string>();
   const enriched = await mapWithConcurrency(industries, 6, async (industry) => {
-    const [rotationResult, statsResult] = await Promise.all([
-      fetchJsonArray(run, "industry/rotation", [
-        `industryCode=${industry.code}`,
-        `beginDate=${beginDate}`,
-        `endDate=${endDate}`,
-        "pageNum=1",
-        "pageSize=1",
-      ]),
-      fetchJsonRecord(run, "industry/market-stats", [
-        "--method",
-        "POST",
-        "--body-json",
-        JSON.stringify({ industryCode: industry.code }),
-      ]),
+    const statsResult = await fetchJsonRecord(run, "industry/market-stats", [
+      "--method",
+      "POST",
+      "--body-json",
+      JSON.stringify({ industryCode: industry.code }),
     ]);
-    if (rotationResult.error) errors.add("industry/rotation");
     if (statsResult.error) errors.add("industry/market-stats");
     return {
       ...industry,
-      signal: normalizeIndustrySignal(rotationResult.data[0], statsResult.data, industry),
+      signal: normalizeIndustrySignal(statsResult.data, industry),
     };
   });
   return { industries: enriched, sourceErrors: [...errors] };
 }
 
 function normalizeIndustrySignal(
-  rotation: Record<string, unknown> | undefined,
   stats: Record<string, unknown>,
   industry: MarketIndustryQuote
 ): MarketIndustrySignal {
   return {
-    marketSentiment: numberOrNull(rotation?.marketSentiment),
-    styleMomentum: numberOrNull(rotation?.hlStyleCorrXMomentum),
     return1d: percentageMaybeRatio(stats.return1d ?? industry.changeRatio),
     return1w: percentageMaybeRatio(stats.return1w ?? industry.changeRatio1W),
     return1m: percentageMaybeRatio(stats.return1m),

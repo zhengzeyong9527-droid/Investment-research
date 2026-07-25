@@ -46,6 +46,10 @@ function overviewFor(indexCode: string): MarketOverview {
     ],
     candles,
     chartSeries: {
+      intraday: [
+        { date: "2026-07-24 09:31", open: 3853.63, close: 3845.13, low: 3845.13, high: 3854.94, previousClose: null, volume: 19774082, amount: 31193776896 },
+        { date: "2026-07-24 09:32", open: 3845.13, close: 3849.77, low: 3843.62, high: 3850.25, previousClose: null, volume: 16222512, amount: 26601935210 },
+      ],
       daily: candles,
       weekly: [
         { date: "2026-06-29", open: 3810, close: 3820, low: 3790, high: 3830, previousClose: 3800, volume: 51100000000, amount: 920000000000 },
@@ -68,18 +72,8 @@ function overviewFor(indexCode: string): MarketOverview {
         return6m: -0.012,
         return1y: 0.082,
         returnYtd: 0.123,
-      },
-      valuation: {
-        code: "000001",
-        name: "上证指数",
-        date: "2026-07-23",
-        marketValue: 10306712250.2484,
-        pe: 16.777,
-        pb: 1.3466,
-        peRank5y: 0.8579,
-        pbRank5y: 0.7008,
-        turnoverRate: 0.0118,
-        dividendYield: 0.0238,
+        source: "investoday",
+        sourceLabel: "今日投资 index/range-gains",
       },
     },
     breadth: {
@@ -119,8 +113,6 @@ function overviewFor(indexCode: string): MarketOverview {
         leadStockCode: "600519",
         leadStockName: "贵州茅台",
         signal: {
-          marketSentiment: 0.64,
-          styleMomentum: 1,
           return1d: 0.0112,
           return1w: 0.024,
           return1m: 0.052,
@@ -148,8 +140,6 @@ function overviewFor(indexCode: string): MarketOverview {
         leadStockCode: "002298",
         leadStockName: "中电鑫龙",
         signal: {
-          marketSentiment: 0.28,
-          styleMomentum: -1,
           return1d: -0.0289,
           return1w: -0.0042,
           return1m: -0.031,
@@ -201,18 +191,28 @@ describe("MarketOverviewView", () => {
     await screen.findByText("上证指数");
 
     expect(screen.getByText("K线与量能")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "分时" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "分时K" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "日K" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "周K" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "月K" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "MA" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "BOLL" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "MACD" })).not.toBeNull();
-    expect(screen.getByText("PE 16.78")).not.toBeNull();
+    expect(screen.getByText("区间表现")).not.toBeNull();
+    expect(screen.getByText("今日")).not.toBeNull();
+    expect(screen.getByText("过去一周")).not.toBeNull();
+    expect(screen.getByText("过去一月")).not.toBeNull();
+    expect(screen.getByText("今年以来")).not.toBeNull();
+    expect(screen.getAllByText(/单位：%/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/PE/)).toBeNull();
+    expect(screen.queryByText(/PB/)).toBeNull();
+    expect(screen.queryByText(/PE百分位/)).toBeNull();
+    expect(screen.queryByText(/股息率/)).toBeNull();
     expect(screen.getByText("赚钱效应")).not.toBeNull();
-    expect(screen.getByText("盘面温度")).not.toBeNull();
-    expect(screen.getByText("极端波动")).not.toBeNull();
-    expect(screen.getByText("资金温度带")).not.toBeNull();
+    expect(screen.queryByText("盘面温度")).toBeNull();
+    expect(screen.queryByText("极端波动")).toBeNull();
+    expect(screen.queryByText(/市场温度/)).toBeNull();
+    expect(screen.getByText("行业资金流向")).not.toBeNull();
     expect(screen.getByText("今日行业气泡")).not.toBeNull();
     expect(screen.getByText("近一周行业气泡")).not.toBeNull();
     expect(screen.queryByText("板块强弱")).toBeNull();
@@ -220,13 +220,15 @@ describe("MarketOverviewView", () => {
     expect(screen.getAllByText("计算机").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("今日行业气泡图")).not.toBeNull();
     expect(screen.getByLabelText("近一周行业气泡图")).not.toBeNull();
+    expect(screen.getByText(/分时K：东方财富公开行情/)).not.toBeNull();
+    expect(screen.getByText(/区间涨跌：今日投资 index\/range-gains/)).not.toBeNull();
   });
 
   it("switches market chart timeframe without refetching structural market data", async () => {
     render(<MarketOverviewView setLoading={vi.fn()} setNotice={vi.fn()} />);
 
     await screen.findByText("上证指数");
-    expect(screen.getByLabelText("指数日K图")).not.toBeNull();
+    expect(screen.getByLabelText("指数分时K图")).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "周K" }));
     expect(screen.getByLabelText("指数周K图")).not.toBeNull();
@@ -234,8 +236,8 @@ describe("MarketOverviewView", () => {
     fireEvent.click(screen.getByRole("button", { name: "月K" }));
     expect(screen.getByLabelText("指数月K图")).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "分时" }));
-    expect(screen.getByLabelText("指数分时图")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "分时K" }));
+    expect(screen.getByLabelText("指数分时K图")).not.toBeNull();
   });
 
   it("refetches data when a different index pill is selected", async () => {

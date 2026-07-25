@@ -10,8 +10,19 @@ function fail(message: string) {
   return { ok: false, stdout: "", stderr: message };
 }
 
+function eastmoneyKlines(rows: string[]) {
+  return {
+    rc: 0,
+    data: {
+      code: "000001",
+      name: "上证指数",
+      klines: rows,
+    },
+  };
+}
+
 describe("market overview data aggregation", () => {
-  it("fetches realtime index, k-line, breadth, and SW industry data", async () => {
+  it("fetches realtime index, daily k-line, intraday k-line, breadth, range gains, and SW industry data", async () => {
     const run = vi.fn<CommandRunner>().mockImplementation(async (_command, args) => {
       if (args[0] === "index-quote/realtime") {
         return ok([
@@ -100,22 +111,6 @@ describe("market overview data aggregation", () => {
           returnYtdPct: 12.3,
         });
       }
-      if (args[0] === "index/valuation") {
-        return ok([
-          {
-            indexCode: "000001",
-            indexName: "上证指数",
-            date: "2026-07-23 00:00:00",
-            indexMarketValue: 10306712250.2484,
-            pe: 16.777,
-            pb: 1.3466,
-            peRank5y: 0.8579,
-            pbRank5y: 0.7008,
-            turnoverRate: 0.0118,
-            divYield: 0.0238,
-          },
-        ]);
-      }
       if (args[0] === "market/change-ratio-status") {
         return ok({
           dataTime: "2026-07-24 14:22:43",
@@ -177,17 +172,6 @@ describe("market overview data aggregation", () => {
           },
         ]);
       }
-      if (args[0] === "industry/rotation") {
-        return ok([
-          {
-            industryCode: args.find((item) => item.startsWith("industryCode="))?.split("=")[1],
-            industryName: "申万行业",
-            date: "2026-07-23 00:00:00",
-            marketSentiment: 0.62,
-            hlStyleCorrXMomentum: 1,
-          },
-        ]);
-      }
       if (args[0] === "industry/market-stats") {
         const body = JSON.parse(args[args.indexOf("--body-json") + 1]);
         return ok({
@@ -206,11 +190,21 @@ describe("market overview data aggregation", () => {
       }
       return fail(`unexpected endpoint ${args[0]}`);
     });
+    const fetchExternal = vi.fn(async () => ({
+      ok: true,
+      json: async () =>
+        eastmoneyKlines([
+          "2026-07-24 09:31,3853.63,3845.13,3854.94,3845.13,19774082,31193776896.00,0.25",
+          "2026-07-24 09:32,3845.13,3849.77,3850.25,3843.62,16222512,26601935210.00,0.17",
+        ]),
+      text: async () => "",
+    } as Response));
 
     const overview = await fetchMarketOverview({
       indexCode: "000001",
       now: new Date("2026-07-24T06:24:00.000Z"),
       run,
+      fetchExternal,
     });
 
     expect(run).toHaveBeenCalledWith("investoday-api", [
@@ -228,15 +222,8 @@ describe("market overview data aggregation", () => {
       JSON.stringify({ indexCode: "000001", beginDate: "2024-02-05", endDate: "2026-07-24", pageNum: 1, pageSize: 500 }),
     ]);
     expect(run).toHaveBeenCalledWith("investoday-api", ["index/range-gains", "indexCode=000001"]);
-    expect(run).toHaveBeenCalledWith("investoday-api", ["index/valuation", "indexCode=000001", "pageNum=1", "pageSize=5"]);
-    expect(run).toHaveBeenCalledWith("investoday-api", [
-      "industry/rotation",
-      "industryCode=340000",
-      "beginDate=2026-07-17",
-      "endDate=2026-07-24",
-      "pageNum=1",
-      "pageSize=1",
-    ]);
+    expect(run.mock.calls.some(([, args]) => args[0] === "index/valuation")).toBe(false);
+    expect(run.mock.calls.some(([, args]) => args[0] === "industry/rotation")).toBe(false);
     expect(run).toHaveBeenCalledWith("investoday-api", [
       "industry/market-stats",
       "--method",
@@ -256,8 +243,34 @@ describe("market overview data aggregation", () => {
       "--body-json",
       JSON.stringify({ industryCodes: [] }),
     ]);
+    const intradayUrl = String(fetchExternal.mock.calls[0][0]);
+    expect(intradayUrl).toContain("push2his.eastmoney.com/api/qt/stock/kline/get");
+    expect(intradayUrl).toContain("secid=1.000001");
+    expect(intradayUrl).toContain("klt=1");
     expect(overview.selectedIndexCode).toBe("000001");
     expect(overview.indexQuotes).toHaveLength(2);
+    expect(overview.chartSeries.intraday).toEqual([
+      {
+        date: "2026-07-24 09:31",
+        open: 3853.63,
+        close: 3845.13,
+        high: 3854.94,
+        low: 3845.13,
+        previousClose: null,
+        volume: 19774082,
+        amount: 31193776896,
+      },
+      {
+        date: "2026-07-24 09:32",
+        open: 3845.13,
+        close: 3849.77,
+        high: 3850.25,
+        low: 3843.62,
+        previousClose: null,
+        volume: 16222512,
+        amount: 26601935210,
+      },
+    ]);
     expect(overview.candles.map((item) => item.date)).toEqual(["2026-06-30", "2026-07-16", "2026-07-22", "2026-07-23", "2026-07-24"]);
     expect(overview.candles[4]).toMatchObject({
       date: "2026-07-24",
@@ -288,23 +301,12 @@ describe("market overview data aggregation", () => {
       return1w: -0.028,
       return1m: 0.045,
       returnYtd: 0.123,
-    });
-    expect(overview.indexMetrics.valuation).toMatchObject({
-      code: "000001",
-      date: "2026-07-23",
-      pe: 16.777,
-      pb: 1.3466,
-      peRank5y: 0.8579,
-      pbRank5y: 0.7008,
-      turnoverRate: 0.0118,
-      dividendYield: 0.0238,
+      source: "investoday",
     });
     expect(overview.breadth.upRatio).toBeCloseTo(721 / (721 + 4768 + 37), 5);
     expect(overview.breadth.extremeRatio).toBeCloseTo((43 + 27 + 16 + 55) / (721 + 4768 + 37), 5);
     expect(overview.industries.map((item) => item.name)).toEqual(["食品饮料", "银行", "计算机"]);
     expect(overview.industries[0].signal).toMatchObject({
-      marketSentiment: 0.62,
-      styleMomentum: 1,
       return1w: 0.024,
       netMainInflow1dMn: 12000,
       netMainInflow5dMn: -34000,
@@ -325,9 +327,6 @@ describe("market overview data aggregation", () => {
       if (args[0] === "index/range-gains") {
         return ok({ indexCode: "000001", indexName: "上证指数" });
       }
-      if (args[0] === "index/valuation") {
-        return ok([]);
-      }
       if (args[0] === "market/change-ratio-status") {
         return ok({ upAmount: 1, downAmount: 1, bxAmount: 0 });
       }
@@ -336,15 +335,81 @@ describe("market overview data aggregation", () => {
       }
       return fail(`unexpected endpoint ${args[0]}`);
     });
+    const fetchExternal = vi.fn(async () => ({
+      ok: false,
+      json: async () => ({}),
+      text: async () => "eastmoney unavailable",
+    } as Response));
 
     const overview = await fetchMarketOverview({
       indexCode: "000001",
       now: new Date("2026-07-24T06:24:00.000Z"),
       run,
+      fetchExternal,
     });
 
     expect(overview.indexQuotes).toHaveLength(1);
+    expect(overview.chartSeries.intraday).toEqual([]);
     expect(overview.industries).toEqual([]);
-    expect(overview.sourceErrors).toEqual(["industry-quote/realtime-v2"]);
+    expect(overview.sourceErrors).toEqual(expect.arrayContaining(["eastmoney/intraday-kline", "industry-quote/realtime-v2"]));
+  });
+
+  it("computes range gains from daily closes when the range gain source omits values", async () => {
+    const run = vi.fn<CommandRunner>().mockImplementation(async (_command, args) => {
+      if (args[0] === "index-quote/realtime") {
+        return ok([
+          {
+            indexCode: "000001",
+            industryName: "上证指数",
+            openPrice: 108,
+            closePriceYDay: 108,
+            currentPrice: 110,
+            changeRatio: 0.0185185,
+            highPrice: 111,
+            lowPrice: 107,
+            dataTime: "2026-07-24 14:24:27",
+          },
+        ]);
+      }
+      if (args[0] === "index/quotes") {
+        return ok([
+          { date: "2025-12-31 00:00:00", openPrice: 80, highPrice: 81, lowPrice: 79, closePrice: 80, previousClosePrice: 79 },
+          { date: "2026-06-24 00:00:00", openPrice: 90, highPrice: 92, lowPrice: 88, closePrice: 90, previousClosePrice: 89 },
+          { date: "2026-07-17 00:00:00", openPrice: 100, highPrice: 102, lowPrice: 98, closePrice: 100, previousClosePrice: 99 },
+          { date: "2026-07-23 00:00:00", openPrice: 108, highPrice: 109, lowPrice: 106, closePrice: 108, previousClosePrice: 107 },
+        ]);
+      }
+      if (args[0] === "index/range-gains") {
+        return ok({ indexCode: "000001", indexName: "上证指数" });
+      }
+      if (args[0] === "market/change-ratio-status") {
+        return ok({ upAmount: 1, downAmount: 1, bxAmount: 0 });
+      }
+      if (args[0] === "industry-quote/realtime-v2") {
+        return ok([]);
+      }
+      return fail(`unexpected endpoint ${args[0]}`);
+    });
+    const fetchExternal = vi.fn(async () => ({
+      ok: true,
+      json: async () => eastmoneyKlines([]),
+      text: async () => "",
+    } as Response));
+
+    const overview = await fetchMarketOverview({
+      indexCode: "000001",
+      now: new Date("2026-07-24T06:24:00.000Z"),
+      run,
+      fetchExternal,
+    });
+
+    expect(overview.indexMetrics.rangeGains).toMatchObject({
+      code: "000001",
+      return1d: 0.0185185,
+      return1w: 0.1,
+      return1m: 0.22222222,
+      returnYtd: 0.375,
+      source: "computed",
+    });
   });
 });
