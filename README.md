@@ -18,19 +18,27 @@
 
 自选速览：围绕自选股、行业、新闻、研报和公告做每日信息聚合，支持范围筛选、情绪筛选和行业滚动观察。
 
-![自选速览](docs/screenshots/workbench-watchlist-digest.png)
+<p align="center">
+  <img src="docs/screenshots/workbench-watchlist-digest.png" alt="自选速览" width="100%" />
+</p>
 
 当日大盘：展示核心指数、分时/日周月 K、区间表现、赚钱效应、行业轮动，并可触发盘面播报 Agent。
 
-![当日大盘](docs/screenshots/workbench-market-overview.png)
+<p align="center">
+  <img src="docs/screenshots/workbench-market-overview.png" alt="当日大盘" width="100%" />
+</p>
 
 投研 Agent 多轮对话：默认智能调度，也可以选择具体能力。每轮问题会生成一个可追踪的 `AgentRun`，回答以 Markdown 渲染。
 
-![投研 Agent 多轮对话](docs/screenshots/workbench-agent-chat-report.png)
+<p align="center">
+  <img src="docs/screenshots/workbench-agent-chat-report.png" alt="投研 Agent 多轮对话" width="100%" />
+</p>
 
 Agent 研究报告正文：支持结构化结论、核心依据、主要风险、表格和长文阅读，执行过程与证据链可在“查看过程”中展开。
 
-![Agent 研究报告正文](docs/screenshots/workbench-agent-report-detail.png)
+<p align="center">
+  <img src="docs/screenshots/workbench-agent-report-detail.png" alt="Agent 研究报告正文" width="100%" />
+</p>
 
 ## 核心功能
 
