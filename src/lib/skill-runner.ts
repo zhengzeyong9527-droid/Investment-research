@@ -1,6 +1,7 @@
 import type { SkillRunner } from "@/lib/agent";
+import { getLlmConfig, type LlmConfig } from "@/lib/model-config";
 
-type OpenAIChatResponse = {
+type OpenAICompatibleChatResponse = {
   choices?: Array<{ message?: { content?: string } }>;
   error?: { message?: string };
 };
@@ -8,26 +9,23 @@ type OpenAIChatResponse = {
 export class OpenAISkillRunner implements SkillRunner {
   readonly configured: boolean;
 
-  constructor(
-    private readonly apiKey = process.env.OPENAI_API_KEY,
-    private readonly model = process.env.OPENAI_MODEL ?? "gpt-4.1-mini"
-  ) {
-    this.configured = Boolean(apiKey);
+  constructor(private readonly config: LlmConfig = getLlmConfig()) {
+    this.configured = config.configured;
   }
 
   async runSkill(input: Parameters<SkillRunner["runSkill"]>[0]) {
-    if (!this.apiKey) {
-      throw new Error("OpenAI API Key 未配置");
+    if (!this.config.apiKey) {
+      throw new Error("LLM API key is not configured. Set DEEPSEEK_API_KEY or OPENAI_API_KEY.");
     }
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(this.config.chatCompletionsUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${this.config.apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: this.model,
+        model: this.config.model,
         temperature: 0.2,
         messages: [
           {
@@ -46,14 +44,14 @@ export class OpenAISkillRunner implements SkillRunner {
       }),
     });
 
-    const payload = (await response.json().catch(() => ({}))) as OpenAIChatResponse;
+    const payload = (await response.json().catch(() => ({}))) as OpenAICompatibleChatResponse;
     if (!response.ok) {
-      throw new Error(payload.error?.message ?? `OpenAI 请求失败：${response.status}`);
+      throw new Error(payload.error?.message ?? `${this.config.provider} request failed: ${response.status}`);
     }
 
     const outputMarkdown = payload.choices?.[0]?.message?.content?.trim();
     if (!outputMarkdown) {
-      throw new Error("OpenAI 未返回可用分析内容");
+      throw new Error(`${this.config.provider} returned no content.`);
     }
 
     return { outputMarkdown, outputHtml: null };

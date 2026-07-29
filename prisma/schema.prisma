@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -89,28 +89,72 @@ model AppSetting {
 
 model AgentRun {
   id             String         @id @default(cuid())
+  agentKey       String         @default("research-router-agent")
+  sessionId      String?
   question       String
   skillKey       String
+  triggerType    String         @default("manual")
   status         AgentRunStatus @default(created)
   inputPayload   String         @default("{}")
   promptPackage  String         @default("")
+  outputJson     String         @default("{}")
   outputMarkdown String?
+  model          String         @default("")
+  tokenInput     Int            @default(0)
+  tokenOutput    Int            @default(0)
+  latencyMs      Int            @default(0)
+  costCents      Int            @default(0)
   error          String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+  startedAt      DateTime?
+  completedAt    DateTime?
+  session        AgentSession?  @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  messages       AgentMessage[]
   steps          AgentStep[]
   skillRuns      SkillRun[]
   evidence       EvidenceRecord[]
+  toolCalls      ToolCall[]
+  modelCalls     ModelCall[]
+  feedback       UserFeedback[]
+  evalResults    AgentEvalResult[]
+}
+
+model AgentSession {
+  id           String         @id @default(cuid())
+  userId       String?
+  title        String
+  entry        String
+  lastActiveAt DateTime       @default(now())
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  runs         AgentRun[]
+  messages     AgentMessage[]
+  memoryItems  MemoryItem[]
+}
+
+model AgentMessage {
+  id          String       @id @default(cuid())
+  agentRunId  String?
+  sessionId   String
+  role        String
+  content     String
+  createdAt   DateTime     @default(now())
+  agentRun    AgentRun?    @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  session     AgentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 }
 
 model AgentStep {
   id         String          @id @default(cuid())
   agentRunId String
+  nodeKey    String          @default("")
   order      Int
   title      String
   status     AgentStepStatus @default(pending)
   message    String          @default("")
   createdAt  DateTime        @default(now())
+  startedAt  DateTime?
+  completedAt DateTime?
   agentRun   AgentRun        @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
 }
 
@@ -135,6 +179,8 @@ model EvidenceRecord {
   id             String       @id @default(cuid())
   agentRunId     String
   skillRunId     String?
+  toolCallId      String?
+  artifactId      String?
   kind           EvidenceKind
   title          String
   source         String
@@ -142,9 +188,111 @@ model EvidenceRecord {
   summary        String       @default("")
   sourceEndpoint String       @default("")
   rawPayload     String       @default("{}")
+  embedding       Unsupported("vector")?
   fetchedAt      DateTime     @default(now())
   agentRun       AgentRun     @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
   skillRun       SkillRun?    @relation(fields: [skillRunId], references: [id], onDelete: SetNull)
+  toolCall       ToolCall?    @relation(fields: [toolCallId], references: [id], onDelete: SetNull)
+  artifact       ResearchArtifact? @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+}
+
+model ToolCall {
+  id             String       @id @default(cuid())
+  agentRunId     String
+  toolKey        String
+  inputJson      String       @default("{}")
+  outputSummary  String       @default("")
+  rawPayloadRef  String?
+  status         String
+  latencyMs      Int          @default(0)
+  error          String?
+  sourceEndpoint String       @default("")
+  createdAt      DateTime     @default(now())
+  agentRun       AgentRun     @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+  evidence       EvidenceRecord[]
+}
+
+model ModelCall {
+  id          String   @id @default(cuid())
+  agentRunId  String
+  model       String
+  mode        String   @default("markdown")
+  promptHash  String   @default("")
+  tokenInput  Int      @default(0)
+  tokenOutput Int      @default(0)
+  costCents   Int      @default(0)
+  latencyMs   Int      @default(0)
+  status      String
+  error       String?
+  createdAt   DateTime @default(now())
+  agentRun    AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+}
+
+model MemoryItem {
+  id          String        @id @default(cuid())
+  sessionId   String?
+  userId      String?
+  scope       String
+  kind        String
+  content     String
+  status      String        @default("active")
+  importance  Float         @default(0.5)
+  lastUsedAt  DateTime?
+  hitCount    Int           @default(0)
+  embedding   Unsupported("vector")?
+  sourceRunId String?
+  confidence  Float         @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  session     AgentSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([sessionId, status])
+  @@index([kind, status])
+}
+
+model ResearchArtifact {
+  id          String       @id @default(cuid())
+  kind        String
+  title       String
+  content     String
+  source      String
+  publishedAt DateTime?
+  embedding   Unsupported("vector")?
+  createdAt   DateTime     @default(now())
+  evidence    EvidenceRecord[]
+}
+
+model AgentEvalCase {
+  id               String            @id @default(cuid())
+  agentKey         String
+  caseName         String
+  inputJson        String            @default("{}")
+  expectedCriteria String            @default("")
+  createdAt        DateTime          @default(now())
+  results          AgentEvalResult[]
+}
+
+model AgentEvalResult {
+  id        String        @id @default(cuid())
+  caseId    String
+  runId     String?
+  score     Float         @default(0)
+  passed    Boolean       @default(false)
+  notes     String        @default("")
+  createdAt DateTime      @default(now())
+  case      AgentEvalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  run       AgentRun?     @relation(fields: [runId], references: [id], onDelete: SetNull)
+}
+
+model UserFeedback {
+  id        String   @id @default(cuid())
+  runId     String
+  rating    Int
+  comment   String   @default("")
+  tags      String   @default("[]")
+  createdAt DateTime @default(now())
+  run       AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 }
 
 enum TargetType {
@@ -185,9 +333,11 @@ enum AnalysisStatus {
 
 enum AgentRunStatus {
   created
+  queued
   planning
   fetching_data
   running_skill
+  interrupted
   completed
   failed
 }

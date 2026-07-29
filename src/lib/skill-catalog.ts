@@ -28,6 +28,39 @@ export type SkillCatalogItem = {
 
 export const localSkillCatalog: SkillCatalogItem[] = [
   {
+    key: "investoday-stock-market-broadcast",
+    name: "盘面行情播报 Agent",
+    shortName: "盘面播报",
+    description: "基于市场宽度、主要指数、行业主题和资讯催化，生成非操作性的 A 股盘面行情播报。",
+    scenario: "适用于当日大盘页的早盘、午盘、盘中和收盘后市场环境解读。",
+    scope: "brief",
+    status: "enabled",
+    outputType: "markdown",
+    riskLevel: "normal",
+    skillPath: "skills/investoday-stock-market-broadcast/SKILL.md",
+    requiredInputs: [],
+    optionalInputs: [
+      {
+        key: "sessionType",
+        label: "市场阶段",
+        type: "select",
+        required: false,
+        options: [
+          { label: "自动判断", value: "auto" },
+          { label: "早盘", value: "morning" },
+          { label: "午盘", value: "midday" },
+          { label: "盘中", value: "intraday" },
+          { label: "收盘后", value: "after_close" },
+        ],
+      },
+      focusField(),
+    ],
+    compliance: [
+      ...commonCompliance(),
+      "不得输出买卖点、交易时机、仓位建议、目标价、止盈止损或短线交易信号。",
+    ],
+  },
+  {
     key: "investoday-research-report-analysis",
     name: "研报解读 Agent",
     shortName: "研报解读",

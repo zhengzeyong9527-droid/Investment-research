@@ -2,6 +2,7 @@ import { defaultCommandRunner, type CommandRunner } from "@/lib/investoday";
 
 export const DEFAULT_MARKET_INDEX_CODES = ["000001", "399001", "399006", "000300", "000905", "000852"] as const;
 const EASTMONEY_INTRADAY_SOURCE = "eastmoney/intraday-kline";
+const INVESTODAY_RETRY_DELAYS_MS = [400, 1200] as const;
 const EASTMONEY_INDEX_SECIDS: Record<(typeof DEFAULT_MARKET_INDEX_CODES)[number], string> = {
   "000001": "1.000001",
   "399001": "0.399001",
@@ -213,32 +214,42 @@ export async function fetchMarketOverview(input: FetchMarketOverviewInput = {}):
 }
 
 async function fetchJsonArray(run: CommandRunner, endpoint: string, args: string[]): Promise<SourceResult<Array<Record<string, unknown>>>> {
-  const result = await run("investoday-api", [endpoint, ...args]);
-  if (!result.ok) {
-    return { data: [], error: endpoint };
+  for (let attempt = 0; attempt <= INVESTODAY_RETRY_DELAYS_MS.length; attempt += 1) {
+    const result = await run("investoday-api", [endpoint, ...args]);
+    if (result.ok && result.stdout.trim()) {
+      try {
+        return { data: parseJsonCandidates(result.stdout) };
+      } catch {
+        // Retry below; cold CLI/network failures can surface as partial or non-JSON stdout.
+      }
+    }
+    if (attempt < INVESTODAY_RETRY_DELAYS_MS.length) {
+      await delay(INVESTODAY_RETRY_DELAYS_MS[attempt]);
+    }
   }
-  try {
-    return { data: parseJsonCandidates(result.stdout) };
-  } catch {
-    return { data: [], error: endpoint };
-  }
+  return { data: [], error: endpoint };
 }
 
 async function fetchJsonRecord(run: CommandRunner, endpoint: string, args: string[]): Promise<SourceResult<Record<string, unknown>>> {
-  const result = await run("investoday-api", [endpoint, ...args]);
-  if (!result.ok) {
-    return { data: {}, error: endpoint };
+  for (let attempt = 0; attempt <= INVESTODAY_RETRY_DELAYS_MS.length; attempt += 1) {
+    const result = await run("investoday-api", [endpoint, ...args]);
+    if (result.ok && result.stdout.trim()) {
+      try {
+        const parsed = JSON.parse(result.stdout);
+        if (isRecord(parsed?.data)) return { data: parsed.data };
+        if (Array.isArray(parsed?.data) && isRecord(parsed.data[0])) return { data: parsed.data[0] };
+        if (Array.isArray(parsed) && isRecord(parsed[0])) return { data: parsed[0] };
+        if (isRecord(parsed)) return { data: parsed };
+        return { data: {}, error: endpoint };
+      } catch {
+        // Retry below; cold CLI/network failures can surface as partial or non-JSON stdout.
+      }
+    }
+    if (attempt < INVESTODAY_RETRY_DELAYS_MS.length) {
+      await delay(INVESTODAY_RETRY_DELAYS_MS[attempt]);
+    }
   }
-  try {
-    const parsed = JSON.parse(result.stdout);
-    if (isRecord(parsed?.data)) return { data: parsed.data };
-    if (Array.isArray(parsed?.data) && isRecord(parsed.data[0])) return { data: parsed.data[0] };
-    if (Array.isArray(parsed) && isRecord(parsed[0])) return { data: parsed[0] };
-    if (isRecord(parsed)) return { data: parsed };
-    return { data: {}, error: endpoint };
-  } catch {
-    return { data: {}, error: endpoint };
-  }
+  return { data: {}, error: endpoint };
 }
 
 async function fetchEastmoneyIntradayCandles(indexCode: string, fetchExternal?: ExternalFetcher): Promise<SourceResult<MarketCandle[]>> {
@@ -355,7 +366,7 @@ function normalizeRangeGain(item: Record<string, unknown>): MarketIndexRangeGain
     return1y: percentPointToRatio(item.return1yPct),
     returnYtd: percentPointToRatio(item.returnYtdPct),
     source: "investoday",
-    sourceLabel: "今日投资 index/range-gains",
+    sourceLabel: "行情数据 index/range-gains",
   };
 }
 
@@ -379,10 +390,10 @@ function mergeRangeGain(primary: MarketIndexRangeGain | null, fallback: MarketIn
   }
   if (usedFallback && hasPrimaryValue) {
     merged.source = "mixed";
-    merged.sourceLabel = "今日投资 index/range-gains，缺失项按日K收盘价计算";
+    merged.sourceLabel = "行情数据 index/range-gains，缺失项按日K收盘价计算";
   } else if (usedFallback && !hasPrimaryValue) {
     merged.source = "computed";
-    merged.sourceLabel = "按今日投资 index/quotes 日K收盘价计算";
+    merged.sourceLabel = "按行情数据 index/quotes 日K收盘价计算";
   }
   return merged;
 }
@@ -415,7 +426,7 @@ function buildComputedRangeGain(
     return1y: ratio(latestClose, closeAtOrBefore(sorted, latestDate, 365)),
     returnYtd: ratio(latestClose, ytdBase),
     source: "computed",
-    sourceLabel: "按今日投资 index/quotes 日K收盘价计算",
+    sourceLabel: "按行情数据 index/quotes 日K收盘价计算",
   };
 }
 
@@ -521,7 +532,7 @@ function normalizeIndustrySignal(
 ): MarketIndustrySignal {
   return {
     return1d: percentageMaybeRatio(stats.return1d ?? industry.changeRatio),
-    return1w: percentageMaybeRatio(stats.return1w ?? industry.changeRatio1W),
+    return1w: percentageMaybeRatio(industry.changeRatio1W),
     return1m: percentageMaybeRatio(stats.return1m),
     netMainInflow1dMn: numberOrNull(stats.netMainInflow1dMn),
     netMainInflow5dMn: numberOrNull(stats.netMainInflow5dMn),
@@ -614,6 +625,10 @@ function addDays(date: Date, days: number) {
   const next = new Date(date);
   next.setUTCDate(next.getUTCDate() + days);
   return next;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function dateParam(date: Date) {

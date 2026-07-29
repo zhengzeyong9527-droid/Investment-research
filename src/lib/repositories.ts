@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import type { AgentRunRepository, EvidenceRecordInput, JsonRecord } from "@/lib/agent";
+import { DEFAULT_AGENT_USER_ID } from "@/agents/memory";
 import type { AnalysisRepository } from "@/lib/analysis";
 import type { DailyBriefRepository } from "@/lib/briefs";
 import { buildBriefItemDisplay, cleanDisplayText } from "@/lib/display";
@@ -186,16 +187,22 @@ export async function getBriefItemDetail(id: string) {
 
 export class PrismaAgentRunRepository implements AgentRunRepository {
   async createAgentRun(data: {
+    agentKey?: string;
+    sessionId?: string | null;
     question: string;
     skillKey: string;
-    status: "created" | "planning" | "fetching_data" | "running_skill" | "completed" | "failed";
+    triggerType?: string;
+    status: "created" | "queued" | "planning" | "fetching_data" | "running_skill" | "interrupted" | "completed" | "failed";
     inputPayload: JsonRecord;
     promptPackage: string;
   }) {
     const run = await prisma.agentRun.create({
       data: {
+        agentKey: data.agentKey ?? "research-router-agent",
+        sessionId: data.sessionId,
         question: data.question,
         skillKey: data.skillKey,
+        triggerType: data.triggerType ?? "manual",
         status: data.status,
         inputPayload: stringifyJson(data.inputPayload),
         promptPackage: data.promptPackage,
@@ -207,23 +214,120 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
   async updateAgentRun(
     id: string,
     data: Partial<{
-      status: "created" | "planning" | "fetching_data" | "running_skill" | "completed" | "failed";
+      status: "created" | "queued" | "planning" | "fetching_data" | "running_skill" | "interrupted" | "completed" | "failed";
+      skillKey: string;
       outputMarkdown: string | null;
+      outputJson: JsonRecord | null;
+      model: string;
+      tokenInput: number;
+      tokenOutput: number;
+      latencyMs: number;
+      costCents: number;
+      startedAt: Date | null;
+      completedAt: Date | null;
+      inputPayload: JsonRecord;
       error: string | null;
     }>
   ) {
-    const run = await prisma.agentRun.update({ where: { id }, data });
+    const { outputJson, inputPayload, ...rest } = data;
+    const run = await prisma.agentRun.update({
+      where: { id },
+      data: {
+        ...rest,
+        ...(outputJson !== undefined ? { outputJson: stringifyJson(outputJson ?? {}) } : {}),
+        ...(inputPayload !== undefined ? { inputPayload: stringifyJson(inputPayload) ?? "{}" } : {}),
+      },
+    });
     return shapeAgentRun(run);
+  }
+
+  async createAgentSession(data: { userId?: string; title: string; entry: "market" | "research" }) {
+    return prisma.agentSession.create({
+      data: {
+        userId: data.userId ?? DEFAULT_AGENT_USER_ID,
+        title: data.title,
+        entry: data.entry,
+      },
+    });
+  }
+
+  async touchAgentSession(id: string) {
+    return prisma.agentSession.update({
+      where: { id },
+      data: { lastActiveAt: new Date() },
+    });
+  }
+
+  async renameAgentSession(id: string, title: string) {
+    return prisma.agentSession.update({
+      where: { id },
+      data: { title, lastActiveAt: new Date() },
+    });
+  }
+
+  async appendAgentMessage(data: { sessionId: string; agentRunId?: string | null; role: string; content: string }) {
+    const message = await prisma.agentMessage.create({
+      data: {
+        sessionId: data.sessionId,
+        agentRunId: data.agentRunId,
+        role: data.role,
+        content: data.content,
+      },
+    });
+    await this.touchAgentSession(data.sessionId);
+    return message;
+  }
+
+  async listRecentAgentMessages(sessionId: string, limit = 12) {
+    const messages = await prisma.agentMessage.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: { role: true, content: true },
+    });
+    return messages.reverse();
+  }
+
+  async listRecentAgentRunInputs(sessionId: string, limit = 8) {
+    const runs = await prisma.agentRun.findMany({
+      where: { sessionId, status: { in: ["fetching_data", "running_skill", "completed"] } },
+      orderBy: { updatedAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        question: true,
+        skillKey: true,
+        inputPayload: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    return runs.map((run) => ({
+      ...run,
+      inputPayload: (parseJson(run.inputPayload) ?? {}) as JsonRecord,
+    }));
   }
 
   async createAgentStep(data: {
     agentRunId: string;
+    nodeKey?: string;
     order: number;
     title: string;
     status: "pending" | "running" | "completed" | "failed";
     message: string;
   }) {
     return prisma.agentStep.create({ data });
+  }
+
+  async appendAgentStep(data: {
+    agentRunId: string;
+    nodeKey: string;
+    order: number;
+    title: string;
+    status: "pending" | "running" | "completed" | "failed";
+    message: string;
+  }) {
+    return this.createAgentStep(data);
   }
 
   async createSkillRun(data: {
@@ -273,6 +377,88 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
       rawPayload: parseJson(record.rawPayload),
     }));
   }
+
+  async recordToolCall(data: {
+    agentRunId: string;
+    toolKey: string;
+    inputJson: JsonRecord;
+    outputSummary: string;
+    rawPayloadRef?: string | null;
+    status: string;
+    latencyMs: number;
+    error?: string | null;
+    sourceEndpoint: string;
+  }) {
+    return prisma.toolCall.create({
+      data: {
+        agentRunId: data.agentRunId,
+        toolKey: data.toolKey,
+        inputJson: stringifyJson(data.inputJson) ?? "{}",
+        outputSummary: data.outputSummary,
+        rawPayloadRef: data.rawPayloadRef,
+        status: data.status,
+        latencyMs: data.latencyMs,
+        error: data.error,
+        sourceEndpoint: data.sourceEndpoint,
+      },
+    });
+  }
+
+  async recordModelCall(data: {
+    agentRunId: string;
+    model: string;
+    mode: string;
+    promptHash: string;
+    tokenInput: number;
+    tokenOutput: number;
+    costCents: number;
+    latencyMs: number;
+    status: string;
+    error?: string | null;
+  }) {
+    return prisma.modelCall.create({ data });
+  }
+
+  async writeEvidence(agentRunId: string, records: EvidenceRecordInput[], skillRunId?: string, toolCallId?: string) {
+    return createEvidenceRecords(agentRunId, records, skillRunId, toolCallId);
+  }
+
+  async writeMemoryItem(data: {
+    sessionId?: string | null;
+    userId?: string | null;
+    scope: string;
+    kind: string;
+    content: string;
+    sourceRunId?: string | null;
+    confidence?: number;
+    importance?: number;
+    status?: string;
+  }) {
+    return prisma.memoryItem.create({
+      data: {
+        sessionId: data.sessionId,
+        userId: data.userId ?? DEFAULT_AGENT_USER_ID,
+        scope: data.scope,
+        kind: data.kind,
+        content: data.content,
+        sourceRunId: data.sourceRunId,
+        confidence: data.confidence ?? 0,
+        importance: data.importance ?? 0.5,
+        status: data.status ?? "active",
+      },
+    });
+  }
+
+  async createFeedback(data: { runId: string; rating: number; comment?: string; tags?: string[] }) {
+    return prisma.userFeedback.create({
+      data: {
+        runId: data.runId,
+        rating: data.rating,
+        comment: data.comment ?? "",
+        tags: stringifyJson(data.tags ?? []) ?? "[]",
+      },
+    });
+  }
 }
 
 export async function listAgentRuns() {
@@ -284,6 +470,68 @@ export async function listAgentRuns() {
   return runs.map(shapeAgentRun);
 }
 
+export async function listAgentSessions(search?: string) {
+  const query = search?.trim();
+  const sessions = await prisma.agentSession.findMany({
+    where: query
+      ? {
+          OR: [
+            { title: { contains: query, mode: "insensitive" } },
+            { messages: { some: { content: { contains: query, mode: "insensitive" } } } },
+          ],
+        }
+      : undefined,
+    orderBy: { lastActiveAt: "desc" },
+    take: 80,
+    include: {
+      messages: { orderBy: { createdAt: "desc" }, take: 1 },
+      runs: { orderBy: { updatedAt: "desc" }, take: 1 },
+    },
+  });
+  return sessions.map((session) => ({
+    ...shapeAgentSession(session),
+    latestMessage: session.messages[0] ?? null,
+    latestRun: session.runs[0] ? shapeAgentRun(session.runs[0]) : null,
+  }));
+}
+
+export async function createAgentSession(data: { userId?: string; title?: string; entry?: "market" | "research" }) {
+  const repository = new PrismaAgentRunRepository();
+  return shapeAgentSession(
+    await repository.createAgentSession({
+      userId: data.userId,
+      title: data.title?.trim() || "新对话",
+      entry: data.entry ?? "research",
+    })
+  );
+}
+
+export async function getAgentSessionDetail(id: string) {
+  const session = await prisma.agentSession.findUnique({
+    where: { id },
+    include: {
+      messages: { orderBy: { createdAt: "asc" } },
+      runs: { orderBy: { updatedAt: "desc" } },
+    },
+  });
+  if (!session) return null;
+  const runs = session.runs.map(shapeAgentRun);
+  return {
+    ...shapeAgentSession(session),
+    messages: session.messages,
+    runs,
+    activeRun: runs.find((run) => !isTerminalRunStatus(String(run.status))) ?? null,
+  };
+}
+
+export async function appendAgentMessage(data: { sessionId: string; agentRunId?: string | null; role: string; content: string }) {
+  return new PrismaAgentRunRepository().appendAgentMessage(data);
+}
+
+export async function renameAgentSession(id: string, title: string) {
+  return shapeAgentSession(await new PrismaAgentRunRepository().renameAgentSession(id, title));
+}
+
 export async function getAgentRun(id: string) {
   const run = await prisma.agentRun.findUnique({
     where: { id },
@@ -291,6 +539,8 @@ export async function getAgentRun(id: string) {
       steps: { orderBy: { order: "asc" } },
       skillRuns: { orderBy: { createdAt: "desc" } },
       evidence: { orderBy: { fetchedAt: "desc" } },
+      toolCalls: { orderBy: { createdAt: "desc" } },
+      modelCalls: { orderBy: { createdAt: "desc" } },
     },
   });
   if (!run) return null;
@@ -299,6 +549,8 @@ export async function getAgentRun(id: string) {
     steps: run.steps,
     skillRuns: run.skillRuns.map((item) => ({ ...item, inputPayload: parseJson(item.inputPayload) })),
     evidence: run.evidence.map((item) => ({ ...item, rawPayload: parseJson(item.rawPayload) })),
+    toolCalls: run.toolCalls.map((item) => ({ ...item, inputJson: parseJson(item.inputJson) })),
+    modelCalls: run.modelCalls,
   };
 }
 
@@ -306,6 +558,14 @@ export async function getAgentRunForExecution(id: string) {
   const run = await prisma.agentRun.findUnique({ where: { id } });
   if (!run) return null;
   return shapeAgentRun(run);
+}
+
+export async function getActiveInterruptedRun(sessionId: string) {
+  const run = await prisma.agentRun.findFirst({
+    where: { sessionId, status: "interrupted" },
+    orderBy: { updatedAt: "desc" },
+  });
+  return run ? shapeAgentRun(run) : null;
 }
 
 export async function listEvidenceRecords(agentRunId: string) {
@@ -316,12 +576,13 @@ export async function listEvidenceRecords(agentRunId: string) {
   return records.map((record) => ({ ...record, rawPayload: parseJson(record.rawPayload) }));
 }
 
-export async function createEvidenceRecords(agentRunId: string, records: EvidenceRecordInput[], skillRunId?: string) {
+export async function createEvidenceRecords(agentRunId: string, records: EvidenceRecordInput[], skillRunId?: string, toolCallId?: string) {
   if (records.length === 0) return [];
   await prisma.evidenceRecord.createMany({
     data: records.map((record) => ({
       agentRunId,
       skillRunId,
+      toolCallId,
       kind: record.kind,
       title: record.title,
       source: record.source,
@@ -345,6 +606,53 @@ export async function getSkillRun(id: string) {
     inputPayload: parseJson(run.inputPayload),
     evidence: run.evidence.map((item) => ({ ...item, rawPayload: parseJson(item.rawPayload) })),
   };
+}
+
+export async function listAgentMemory(input: { userId?: string; status?: string; query?: string } = {}) {
+  const query = input.query?.trim();
+  const memories = await prisma.memoryItem.findMany({
+    where: {
+      userId: input.userId ?? DEFAULT_AGENT_USER_ID,
+      status: input.status ?? "active",
+      ...(query
+        ? {
+            OR: [
+              { content: { contains: query, mode: "insensitive" } },
+              { kind: { contains: query, mode: "insensitive" } },
+              { scope: { contains: query, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ importance: "desc" }, { lastUsedAt: "desc" }, { updatedAt: "desc" }],
+    take: 120,
+  });
+  return memories;
+}
+
+export async function updateAgentMemory(
+  id: string,
+  data: Partial<{
+    status: string;
+    importance: number;
+    content: string;
+  }>
+) {
+  return prisma.memoryItem.update({
+    where: { id },
+    data: {
+      ...(data.status !== undefined ? { status: data.status } : {}),
+      ...(data.importance !== undefined ? { importance: data.importance } : {}),
+      ...(data.content !== undefined ? { content: data.content } : {}),
+    },
+  });
+}
+
+export async function deleteAgentMemory(id: string) {
+  return prisma.memoryItem.update({
+    where: { id },
+    data: { status: "archived" },
+  });
 }
 
 export async function listBriefHistory() {
@@ -466,5 +774,20 @@ function shapeAgentRun<T extends { inputPayload: string }>(run: T) {
   return {
     ...run,
     inputPayload: (parseJson(run.inputPayload) ?? {}) as JsonRecord,
+    outputJson: (parseJson((run as { outputJson?: string }).outputJson) ?? {}) as JsonRecord,
   };
+}
+
+function shapeAgentSession<
+  T extends {
+    lastActiveAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+  } & Record<string, unknown>,
+>(session: T) {
+  return session;
+}
+
+function isTerminalRunStatus(status: string) {
+  return status === "completed" || status === "failed" || status === "interrupted";
 }

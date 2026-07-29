@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
+import { agentApiErrorResponse } from "@/lib/agent-api-errors";
 import { getAgentRun } from "@/lib/repositories";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const run = await getAgentRun(id);
-  if (!run) {
-    return NextResponse.json({ error: "Agent 任务不存在" }, { status: 404 });
+  try {
+    const { id } = await params;
+    const run = await getAgentRun(id);
+    if (!run) {
+      return NextResponse.json({ error: "Agent 任务不存在" }, { status: 404 });
+    }
+    return NextResponse.json(run);
+  } catch (error) {
+    return agentApiErrorResponse(error, "Agent run loading failed", 500);
   }
-  return NextResponse.json(run);
 }

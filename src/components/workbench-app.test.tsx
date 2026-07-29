@@ -3,6 +3,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WorkbenchApp } from "./workbench-app";
 import type { DailyBrief } from "./workbench/types";
+import type { HotspotOverview } from "@/lib/hotspots";
 import type { MarketOverview } from "@/lib/market-overview";
 
 const sampleBrief: DailyBrief = {
@@ -18,7 +19,7 @@ const sampleBrief: DailyBrief = {
       id: "item-news-important",
       kind: "news",
       title: "重要新闻",
-      source: "今日投资新闻",
+      source: "新闻数据",
       publishedAt: "2026-07-24T02:00:00.000Z",
       summary: "重要新闻摘要。",
       sentimentValue: 4,
@@ -37,7 +38,7 @@ const sampleBrief: DailyBrief = {
       id: "item-news-normal",
       kind: "news",
       title: "普通新闻不应出现",
-      source: "今日投资新闻",
+      source: "新闻数据",
       publishedAt: "2026-07-24T01:00:00.000Z",
       summary: "普通新闻摘要。",
       sentimentValue: 5,
@@ -173,9 +174,107 @@ const sampleMarketOverview: MarketOverview = {
       return1y: 0.082,
       returnYtd: 0.123,
       source: "investoday",
-      sourceLabel: "今日投资 index/range-gains",
+      sourceLabel: "行情数据 index/range-gains",
     },
   },
+};
+
+const sampleHotspotOverview: HotspotOverview = {
+  updatedAt: "2026-07-28 11:14:32",
+  sourceErrors: [],
+  industries: [
+    {
+      type: "industry",
+      code: "340000",
+      name: "食品饮料",
+      changeRatio: 0.0141,
+      changeRatio1W: -0.0025,
+      ratioRank: 1,
+      stockUp: 107,
+      stockDown: 17,
+      stockFlat: 2,
+      stockTotal: 126,
+      limitUp: 2,
+      leadStockCode: "605179",
+      leadStockName: "一鸣食品",
+      totalValue: 3772545686120,
+      dataTime: "2026-07-28 11:14:32",
+    },
+    ...["商贸零售", "银行", "交通运输", "家用电器", "纺织服饰", "社会服务", "美容护理", "综合"].map((name, index) => ({
+      type: "industry" as const,
+      code: `${450000 + index}`,
+      name,
+      changeRatio: 0.01 - index * 0.001,
+      changeRatio1W: null,
+      ratioRank: index + 2,
+      stockUp: 60,
+      stockDown: 20,
+      stockFlat: 1,
+      stockTotal: 81,
+      limitUp: 1,
+      leadStockCode: "",
+      leadStockName: "",
+      totalValue: null,
+      dataTime: "2026-07-28 11:14:32",
+    })),
+  ],
+  industryDeclines: [
+    {
+      type: "industry",
+      code: "730000",
+      name: "通信",
+      changeRatio: -0.1088,
+      changeRatio1W: -0.12,
+      ratioRank: 31,
+      stockUp: 5,
+      stockDown: 98,
+      stockFlat: 0,
+      stockTotal: 103,
+      limitUp: 0,
+      leadStockCode: "",
+      leadStockName: "",
+      totalValue: null,
+      dataTime: "2026-07-28 11:14:32",
+    },
+  ],
+  concepts: [
+    {
+      type: "concept",
+      code: "14020004",
+      name: "鸡尾酒",
+      changeRatio: 0.04915,
+      changeRatio1W: 0.0299,
+      ratioRank: 1,
+      stockUp: 1,
+      stockDown: 1,
+      stockFlat: 0,
+      stockTotal: 2,
+      limitUp: 1,
+      leadStockCode: "002387",
+      leadStockName: "维信诺",
+      totalValue: 27998837529,
+      dataTime: "2026-07-28 11:14:32",
+    },
+  ],
+  conceptDeclines: [
+    {
+      type: "concept",
+      code: "15032397",
+      name: "博通概念",
+      changeRatio: -0.0965,
+      changeRatio1W: null,
+      ratioRank: 1000,
+      stockUp: 1,
+      stockDown: 17,
+      stockFlat: 0,
+      stockTotal: 18,
+      limitUp: 0,
+      leadStockCode: "",
+      leadStockName: "",
+      totalValue: null,
+      dataTime: "2026-07-28 11:14:32",
+    },
+  ],
 };
 
 let currentBrief: DailyBrief | null = null;
@@ -183,6 +282,16 @@ let currentBrief: DailyBrief | null = null;
 function jsonResponse(payload: unknown) {
   return {
     ok: true,
+    status: 200,
+    json: async () => payload,
+    text: async () => JSON.stringify(payload),
+  } as Response;
+}
+
+function errorJsonResponse(payload: unknown, status = 503) {
+  return {
+    ok: false,
+    status,
     json: async () => payload,
     text: async () => JSON.stringify(payload),
   } as Response;
@@ -190,9 +299,13 @@ function jsonResponse(payload: unknown) {
 
 function payloadFor(url: string) {
   if (url.startsWith("/api/briefs?")) return currentBrief;
+  if (url.startsWith("/api/hotspots")) return sampleHotspotOverview;
   if (url.startsWith("/api/market-overview")) return sampleMarketOverview;
   if (url === "/api/watch-targets") {
     return [{ id: "target-1", type: "stock", code: "600519", name: "贵州茅台", tags: [], reason: "", enabled: true }];
+  }
+  if (url === "/api/agent-sessions") {
+    return [];
   }
   if (url === "/api/settings") {
     return {
@@ -223,7 +336,7 @@ describe("WorkbenchApp navigation", () => {
     render(<WorkbenchApp />);
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(6);
+      expect(fetch).toHaveBeenCalledTimes(9);
     });
 
     const navigation = screen.getByRole("navigation");
@@ -239,7 +352,7 @@ describe("WorkbenchApp navigation", () => {
     render(<WorkbenchApp />);
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(6);
+      expect(fetch).toHaveBeenCalledTimes(9);
     });
 
     const sidebars = screen.getAllByRole("complementary");
@@ -248,11 +361,42 @@ describe("WorkbenchApp navigation", () => {
     expect(sidebars[0].classList.contains("glass-rail")).toBe(true);
   });
 
+  it("keeps the agent page usable when agent storage is unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/agent-sessions" || url === "/api/agent-runs") {
+          return errorJsonResponse({
+            code: "AGENT_DB_UNAVAILABLE",
+            message: "Agent 数据库未连接，请先启动 Postgres 服务",
+            retryable: true,
+          });
+        }
+        return jsonResponse(payloadFor(url));
+      })
+    );
+
+    render(<WorkbenchApp />);
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledTimes(9);
+    });
+
+    const navigation = screen.getByRole("navigation");
+    fireEvent.click(within(navigation).getByRole("button", { name: "研究" }));
+
+    expect(await screen.findByRole("alert")).not.toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("Agent 数据库未连接");
+    expect((screen.getByRole("button", { name: "新建对话" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("能力选择") as HTMLSelectElement).disabled).toBe(false);
+  });
+
   it("loads the market overview only after the market view is opened", async () => {
     render(<WorkbenchApp />);
 
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledTimes(6);
+      expect(fetch).toHaveBeenCalledTimes(9);
     });
     expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/api/market-overview"), expect.anything());
 
@@ -293,6 +437,25 @@ describe("WorkbenchApp self-selected digest", () => {
     expect(screen.queryByText("全部重要性")).toBeNull();
     expect(screen.queryByText("最新优先")).toBeNull();
     expect(screen.queryByText("展开要点 / 影响 / 机会风险")).toBeNull();
+    expect(screen.queryByText("机会线索")).toBeNull();
+    expect(screen.queryByText("风险提示")).toBeNull();
+    expect(screen.queryByText("产业趋势改善。")).toBeNull();
+    expect(screen.queryByText("需求修复偏慢。")).toBeNull();
+    expect(screen.getByText("行业滚动")).not.toBeNull();
+    expect(screen.getByText("概念滚动")).not.toBeNull();
+    expect(screen.getAllByText("综合").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "查看全部" })[0].getAttribute("href")).toBe("/hotspots/industry");
+    expect(screen.getAllByRole("link", { name: "查看全部" })[1].getAttribute("href")).toBe("/hotspots/concept");
+    expect(screen.getAllByRole("button", { name: "涨幅" }).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole("link", { name: /食品饮料/ }).getAttribute("href")).toBe("/hotspots/industry/340000");
+    expect(screen.getByRole("link", { name: /鸡尾酒/ }).getAttribute("href")).toBe("/hotspots/concept/14020004");
+    fireEvent.click(screen.getAllByRole("button", { name: "跌幅" })[0]);
+    expect(screen.getByRole("link", { name: /通信/ }).getAttribute("href")).toBe("/hotspots/industry/730000");
+    expect(screen.queryByText("重要")).toBeNull();
+    expect(screen.queryByText("关联度 5")).toBeNull();
+    expect(screen.queryByText("今日投资新闻")).toBeNull();
+    expect(screen.queryByText("今日投资实时行情")).toBeNull();
+    expect(document.body.textContent).not.toContain("今日投资");
   });
 
   it("hides level 2 news while preserving research and announcements", async () => {

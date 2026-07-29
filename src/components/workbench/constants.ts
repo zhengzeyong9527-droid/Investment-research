@@ -19,9 +19,11 @@ export const kindLabel: Record<BriefItem["kind"], string> = {
 
 export const statusLabel: Record<AgentRun["status"], string> = {
   created: "已创建",
+  queued: "排队中",
   planning: "规划中",
   fetching_data: "取证中",
   running_skill: "执行中",
+  interrupted: "待确认",
   completed: "已完成",
   failed: "失败",
 };

@@ -312,8 +312,88 @@ describe("market overview data aggregation", () => {
       netMainInflow5dMn: -34000,
       pePct5y: 0.61,
     });
+    expect(overview.industries.find((item) => item.code === "710000")?.signal?.return1w).toBe(-0.0042);
     expect(overview.updatedAt).toBe("2026-07-24 14:24:27");
     expect(overview.sourceErrors).toEqual([]);
+  });
+
+  it("retries transient command and JSON parse failures before marking a source unavailable", async () => {
+    const callsByEndpoint: Record<string, number> = {};
+    const run = vi.fn<CommandRunner>().mockImplementation(async (_command, args) => {
+      const endpoint = args[0];
+      callsByEndpoint[endpoint] = (callsByEndpoint[endpoint] ?? 0) + 1;
+
+      if (endpoint === "index-quote/realtime") {
+        if (callsByEndpoint[endpoint] === 1) return fail("cold start");
+        return ok([
+          {
+            indexCode: "000001",
+            industryName: "retry index",
+            openPrice: 99,
+            closePriceYDay: 99,
+            currentPrice: 100,
+            changeRatio: 0.01010101,
+            highPrice: 101,
+            lowPrice: 98,
+            dataTime: "2026-07-24 14:24:27",
+          },
+        ]);
+      }
+      if (endpoint === "index/quotes") {
+        return ok([
+          {
+            date: "2026-07-23 00:00:00",
+            indexCode: "000001",
+            indexName: "retry index",
+            previousClosePrice: 98,
+            openPrice: 98,
+            highPrice: 100,
+            lowPrice: 97,
+            closePrice: 99,
+          },
+        ]);
+      }
+      if (endpoint === "index/range-gains") {
+        if (callsByEndpoint[endpoint] === 1) return { ok: true, stdout: "not json", stderr: "" };
+        return ok({
+          indexCode: "000001",
+          indexName: "retry index",
+          return1dPct: 1,
+          return1wPct: 2,
+          return1mPct: 3,
+          returnYtdPct: 4,
+        });
+      }
+      if (endpoint === "market/change-ratio-status") {
+        return ok({ upAmount: 2, downAmount: 1, bxAmount: 0 });
+      }
+      if (endpoint === "industry-quote/realtime-v2") {
+        return ok([]);
+      }
+      return fail(`unexpected endpoint ${endpoint}`);
+    });
+    const fetchExternal = vi.fn(async () => ({
+      ok: true,
+      json: async () => eastmoneyKlines([]),
+      text: async () => "",
+    } as Response));
+
+    const overview = await fetchMarketOverview({
+      indexCode: "000001",
+      now: new Date("2026-07-24T06:24:00.000Z"),
+      run,
+      fetchExternal,
+    });
+
+    expect(callsByEndpoint["index-quote/realtime"]).toBe(2);
+    expect(callsByEndpoint["index/range-gains"]).toBe(2);
+    expect(overview.sourceErrors).toEqual([]);
+    expect(overview.indexMetrics.rangeGains).toMatchObject({
+      return1d: 0.01,
+      return1w: 0.02,
+      return1m: 0.03,
+      returnYtd: 0.04,
+    });
   });
 
   it("returns available market data when an optional source fails", async () => {
@@ -351,6 +431,7 @@ describe("market overview data aggregation", () => {
     expect(overview.indexQuotes).toHaveLength(1);
     expect(overview.chartSeries.intraday).toEqual([]);
     expect(overview.industries).toEqual([]);
+    expect(run.mock.calls.filter(([, args]) => args[0] === "industry-quote/realtime-v2")).toHaveLength(3);
     expect(overview.sourceErrors).toEqual(expect.arrayContaining(["eastmoney/intraday-kline", "industry-quote/realtime-v2"]));
   });
 

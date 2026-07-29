@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MarketOverviewView } from "@/components/workbench/market-overview-view";
@@ -65,7 +65,7 @@ function overviewFor(indexCode: string): MarketOverview {
       rangeGains: {
         code: "000001",
         name: "上证指数",
-        return1d: -0.0123,
+        return1d: 0.5,
         return1w: -0.028,
         return1m: 0.045,
         return3m: 0.051,
@@ -73,7 +73,7 @@ function overviewFor(indexCode: string): MarketOverview {
         return1y: 0.082,
         returnYtd: 0.123,
         source: "investoday",
-        sourceLabel: "今日投资 index/range-gains",
+        sourceLabel: "行情数据 index/range-gains",
       },
     },
     breadth: {
@@ -114,7 +114,7 @@ function overviewFor(indexCode: string): MarketOverview {
         leadStockName: "贵州茅台",
         signal: {
           return1d: 0.0112,
-          return1w: 0.024,
+          return1w: 0.8982,
           return1m: 0.052,
           netMainInflow1dMn: 12000,
           netMainInflow5dMn: 42000,
@@ -195,14 +195,16 @@ describe("MarketOverviewView", () => {
     expect(screen.getByRole("button", { name: "日K" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "周K" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "月K" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "MA" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "BOLL" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "MACD" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "MA" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "BOLL" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "MACD" })).toBeNull();
     expect(screen.getByText("区间表现")).not.toBeNull();
     expect(screen.getByText("今日")).not.toBeNull();
     expect(screen.getByText("过去一周")).not.toBeNull();
     expect(screen.getByText("过去一月")).not.toBeNull();
     expect(screen.getByText("今年以来")).not.toBeNull();
+    expect(within(screen.getByText("今日").closest(".market-range-card") as HTMLElement).getByText("-1.23%")).not.toBeNull();
+    expect(screen.queryByText("+50.00%")).toBeNull();
     expect(screen.getAllByText(/单位：%/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/PE/)).toBeNull();
     expect(screen.queryByText(/PB/)).toBeNull();
@@ -213,15 +215,24 @@ describe("MarketOverviewView", () => {
     expect(screen.queryByText("极端波动")).toBeNull();
     expect(screen.queryByText(/市场温度/)).toBeNull();
     expect(screen.getByText("行业资金流向")).not.toBeNull();
-    expect(screen.getByText("今日行业气泡")).not.toBeNull();
-    expect(screen.getByText("近一周行业气泡")).not.toBeNull();
+    expect(screen.getByText("今日行业热力")).not.toBeNull();
+    expect(screen.getByText("近一周行业热力")).not.toBeNull();
+    expect(screen.queryByText(/行业气泡/)).toBeNull();
     expect(screen.queryByText("板块强弱")).toBeNull();
     expect(screen.getAllByText("食品饮料").length).toBeGreaterThan(0);
     expect(screen.getAllByText("计算机").length).toBeGreaterThan(0);
-    expect(screen.getByLabelText("今日行业气泡图")).not.toBeNull();
-    expect(screen.getByLabelText("近一周行业气泡图")).not.toBeNull();
-    expect(screen.getByText(/分时K：东方财富公开行情/)).not.toBeNull();
-    expect(screen.getByText(/区间涨跌：今日投资 index\/range-gains/)).not.toBeNull();
+    expect(screen.getByLabelText("今日行业热力矩阵")).not.toBeNull();
+    expect(screen.getByLabelText("近一周行业热力矩阵")).not.toBeNull();
+    expect(within(screen.getByTestId("industry-heat-weekly-340000")).getByText("+2.40%")).not.toBeNull();
+    expect(within(screen.getByTestId("industry-heat-weekly-340000")).queryByText("+89.82%")).toBeNull();
+    expect(within(screen.getByTestId("industry-heat-today-340000")).getByText("82涨 / 41跌")).not.toBeNull();
+    const visibleText = document.body.textContent ?? "";
+    expect(visibleText).not.toContain("index/range-gains");
+    expect(visibleText).not.toContain("market/change-ratio-status");
+    expect(visibleText).not.toContain("index/quotes");
+    expect(visibleText).not.toContain("industry-quote/realtime-v2");
+    expect(visibleText).not.toContain("industry/market-stats");
+    expect(visibleText).not.toContain("来源");
   });
 
   it("switches market chart timeframe without refetching structural market data", async () => {
@@ -229,9 +240,13 @@ describe("MarketOverviewView", () => {
 
     await screen.findByText("上证指数");
     expect(screen.getByLabelText("指数分时K图")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "MA" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "周K" }));
     expect(screen.getByLabelText("指数周K图")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "MA" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "BOLL" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "MACD" })).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "月K" }));
     expect(screen.getByLabelText("指数月K图")).not.toBeNull();

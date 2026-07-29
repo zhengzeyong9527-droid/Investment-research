@@ -1,9 +1,4 @@
-import type {
-  AgentRunStatus,
-  AgentStepStatus,
-  EvidenceKind,
-  SkillRunStatus,
-} from "@/lib/types";
+import type { AgentRunStatus, AgentStepStatus, EvidenceKind, SkillRunStatus } from "@/lib/types";
 import {
   getSkillCatalog,
   getSkillCatalogItem,
@@ -16,11 +11,14 @@ export type JsonRecord = Record<string, unknown>;
 
 export type AgentRunRecord = {
   id: string;
+  agentKey?: string;
+  sessionId?: string | null;
   question: string;
   skillKey: string;
   status: AgentRunStatus;
   inputPayload: JsonRecord;
   promptPackage: string;
+  outputJson?: JsonRecord | null;
   outputMarkdown?: string | null;
   error?: string | null;
 };
@@ -37,8 +35,11 @@ export type EvidenceRecordInput = {
 
 export type AgentRunRepository = {
   createAgentRun(data: {
+    agentKey?: string;
+    sessionId?: string | null;
     question: string;
     skillKey: string;
+    triggerType?: string;
     status: AgentRunStatus;
     inputPayload: JsonRecord;
     promptPackage: string;
@@ -47,7 +48,10 @@ export type AgentRunRepository = {
     id: string,
     data: Partial<{
       status: AgentRunStatus;
+      skillKey: string;
+      inputPayload: JsonRecord;
       outputMarkdown: string | null;
+      outputJson: JsonRecord | null;
       error: string | null;
     }>
   ): Promise<Partial<AgentRunRecord> & { id: string }>;
@@ -185,6 +189,7 @@ export async function executeAgentRun(input: {
 
 export function inferSkillKey(question: string, inputPayload: JsonRecord = {}) {
   const text = `${question} ${Object.values(inputPayload).join(" ")}`;
+  if (/盘面|大盘|市场环境|早盘|午盘|盘中|收盘|行情播报/.test(text)) return "investoday-stock-market-broadcast";
   if (/解套|被套|亏损|仓位/.test(text)) return "investoday-ai-unwind-advisor";
   if (/行业|板块|主题|产业链|赛道/.test(text)) return "investoday-industry-chief-analyst";
   if (/成长|PEG|景气|六维/.test(text)) return "gs-growth-master-strategy";
@@ -202,19 +207,19 @@ export function buildPromptPackage(input: {
   return [
     `# Agent Skill: ${input.skill.key}`,
     "",
-    `## 用户问题`,
+    "## 用户问题",
     input.question,
     "",
-    `## 输入参数`,
+    "## 输入参数",
     JSON.stringify(input.inputPayload, null, 2),
     "",
-    `## 证据记录`,
+    "## 证据记录",
     input.evidence.length > 0 ? JSON.stringify(input.evidence, null, 2) : "暂无已保存证据，执行器应通过数据适配层补充。",
     "",
-    `## 合规边界`,
+    "## 合规边界",
     input.skill.compliance.map((item) => `- ${item}`).join("\n"),
     "",
-    `## 本地 Skill 说明`,
+    "## 本地 Skill 说明",
     input.skillMarkdown || `执行时读取 ${input.skill.skillPath}`,
   ].join("\n");
 }
@@ -231,6 +236,9 @@ export function normalizeInputForSkill(skillKey: string, inputPayload: JsonRecor
   }
   if (skillKey === "gs-growth-master-strategy") {
     return { ...inputPayload, subject: inputPayload.subject ?? inputPayload.stockCode ?? extractStockCode(question) ?? question };
+  }
+  if (skillKey === "investoday-stock-market-broadcast") {
+    return { ...inputPayload, sessionType: inputPayload.sessionType ?? "auto", question };
   }
   return inputPayload;
 }

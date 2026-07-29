@@ -1,6 +1,16 @@
 export type View = "brief" | "market" | "agent" | "watchlist" | "settings";
 
 export type {
+  HotspotDetail,
+  HotspotListResult,
+  HotspotOrder,
+  HotspotOverview,
+  HotspotStockQuote,
+  HotspotType,
+  RollingHotspot,
+} from "@/lib/hotspots";
+
+export type {
   MarketBreadth,
   MarketCandle,
   MarketChartSeries,
@@ -95,15 +105,63 @@ export type AgentRun = {
   id: string;
   question: string;
   skillKey: string;
-  status: "created" | "planning" | "fetching_data" | "running_skill" | "completed" | "failed";
+  agentKey?: string;
+  sessionId?: string | null;
+  triggerType?: string;
+  status: "created" | "queued" | "planning" | "fetching_data" | "running_skill" | "interrupted" | "completed" | "failed";
   inputPayload: Record<string, unknown>;
   promptPackage: string;
+  outputJson?: Record<string, unknown> | null;
   outputMarkdown?: string | null;
   error?: string | null;
   createdAt?: string;
   updatedAt?: string;
-  evidence?: Array<{ id: string; kind: string; title: string; source: string; summary: string }>;
-  steps?: Array<{ id: string; title: string; status: string; message: string }>;
+  evidence?: Array<{ id: string; kind: string; title: string; source: string; summary: string; sourceEndpoint?: string; publishedAt?: string | null }>;
+  steps?: Array<{ id: string; nodeKey?: string; title: string; status: string; message: string }>;
+  toolCalls?: Array<{ id: string; toolKey: string; status: string; outputSummary: string; sourceEndpoint: string; inputJson?: Record<string, unknown> | null; error?: string | null }>;
+  modelCalls?: Array<{ id: string; model: string; status: string; tokenInput: number; tokenOutput: number }>;
+};
+
+export type AgentSession = {
+  id: string;
+  userId?: string | null;
+  title: string;
+  entry: string;
+  lastActiveAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentMessage = {
+  id: string;
+  agentRunId?: string | null;
+  sessionId: string;
+  role: "user" | "assistant" | "system" | string;
+  content: string;
+  createdAt: string;
+};
+
+export type AgentSessionDetail = AgentSession & {
+  messages: AgentMessage[];
+  runs: AgentRun[];
+  activeRun?: AgentRun | null;
+};
+
+export type AgentMemoryItem = {
+  id: string;
+  sessionId?: string | null;
+  userId?: string | null;
+  scope: string;
+  kind: string;
+  content: string;
+  status: string;
+  importance: number;
+  confidence: number;
+  lastUsedAt?: string | null;
+  hitCount: number;
+  sourceRunId?: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type BriefHistory = {

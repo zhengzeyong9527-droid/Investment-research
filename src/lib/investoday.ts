@@ -89,7 +89,7 @@ export class InvestodayDataAdapter {
     const stockName = stockNameOf(match);
     const stockCode = stockCodeOf(match);
     if (!match || !stockName || !stockCode) {
-      throw new Error("未能从今日投资数据识别股票名称");
+      throw new Error("未能从数据接口识别股票名称");
     }
     const matchRecord = match as Record<string, unknown>;
 
@@ -118,7 +118,7 @@ export class InvestodayDataAdapter {
     const industryCode = stringValue(match?.industryCode) || stringValue(match?.code);
     const industryName = stringValue(match?.industryName) || stringValue(match?.name);
     if (!match || !industryCode || !industryName) {
-      throw new Error("未能从今日投资数据识别板块名称");
+      throw new Error("未能从数据接口识别板块名称");
     }
 
     return {
@@ -262,7 +262,7 @@ function normalizeNewsItem(item: Record<string, unknown>, target: EnabledTarget,
   return {
     kind: "news",
     title,
-    source: stringValue(item.source) || "今日投资新闻",
+    source: stringValue(item.source) || "新闻数据",
     publishedAt: parseDateValue(item.date ?? item.publishDate),
     summary: stringValue(item.summary) || stringValue(item.keyPoints) || `与 ${target.name} 相关的新闻线索。`,
     rawRef: `investoday:news:${stringValue(item.newsId) || target.code}:${index}`,
@@ -304,7 +304,7 @@ function normalizeAnnouncementItem(
   return {
     kind: "announcement",
     title,
-    source: stringValue(item.announcementSource) || "今日投资公告",
+    source: stringValue(item.announcementSource) || "公告数据",
     publishedAt: parseDateValue(item.date ?? item.publishDate),
     summary: `${target.name} 公告：${title}`,
     rawRef: `investoday:announcement:${stringValue(item.announcementId) || target.code}:${index}`,
@@ -326,7 +326,7 @@ function normalizeResearchItem(
   return {
     kind: "research",
     title,
-    source: stringValue(item.orgName) || stringValue(item.institutionName) || "今日投资研报",
+    source: stringValue(item.orgName) || stringValue(item.institutionName) || "研报数据",
     publishedAt: parseDateValue(item.publishDate ?? item.date),
     summary:
       stringValue(item.coreViewpoint) ||
@@ -376,7 +376,7 @@ function normalizeResearchSentimentItem(
   return {
     kind: "research",
     title,
-    source: stringValue(item.institutionName) || stringValue(item.orgName) || "今日投资研报",
+    source: stringValue(item.institutionName) || stringValue(item.orgName) || "研报数据",
     publishedAt: parseDateValue(item.date ?? item.publishDate),
     summary: firstNonEmpty(item.coreContent, item.analysisViewpoint, item.keyReason, `与 ${target.name} 相关的研报观点线索。`),
     rawRef: `investoday:research-sentiment:${stringValue(item.guid) || target.code}:${index}`,

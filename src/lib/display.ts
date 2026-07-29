@@ -82,10 +82,10 @@ export function contentKindLabel(kind: BriefItemKind) {
 
 export function dataSourceLabel(kind: BriefItemKind) {
   return {
-    news: "今日投资新闻数据",
-    research: "今日投资研报数据",
-    announcement: "今日投资公告数据",
-    event: "今日投资事件数据",
+    news: "新闻数据",
+    research: "研报数据",
+    announcement: "公告数据",
+    event: "事件数据",
   }[kind];
 }
 
@@ -210,7 +210,6 @@ function buildSections(
   return [
     section("基本信息", [
       field("内容类型", contentKindLabel(item.kind), "metric"),
-      field("来源", item.source, "metric"),
       field("发布时间", formatDateTime(item.publishedAt), "metric"),
       field("关联对象", item.target ? `${item.target.name} ${item.target.code}` : "", "metric"),
     ]),
@@ -223,12 +222,10 @@ function buildSections(
       field("关键要点", payload.keyPoints, "bullets"),
       field("关键事由", payload.keyReason, "bullets"),
     ]),
-    section("情绪与重要性", [
+    section("情绪指标", [
       field("情绪倾向", labels.sentimentLabel, "metric"),
       field("情绪得分", numberText(labels.sentimentScore), "metric"),
-      field("新闻等级", labels.newsLevelLabel, "metric"),
       field("新闻类型", labels.newsTypeLabel, "metric"),
-      field("关联度", numberText(labels.relevance), "metric"),
       field("综合得分", numberText(payload.comScore), "metric"),
     ]),
     section("影响分析", [
@@ -245,7 +242,6 @@ function buildSections(
       field("目标价", payload.targetPrice, "metric"),
       field("分析观点", payload.analysisViewpoint ?? payload.coreViewpoint, "ordered"),
     ]),
-    section("来源说明", [field("数据来源", dataSourceLabel(item.kind), "metric"), field("抓取时间", formatDateTime(item.fetchedAt), "metric")]),
   ].filter((item) => item.fields.length > 0);
 }
 

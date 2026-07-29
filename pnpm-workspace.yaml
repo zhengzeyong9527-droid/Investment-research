@@ -1,0 +1,7 @@
+minimumReleaseAgeExclude:
+  - bullmq@5.81.2
+allowBuilds:
+  '@embedded-postgres/windows-x64': true
+  msgpackr-extract: false
+  postgres-memory-server: true
+  redis-memory-server: true

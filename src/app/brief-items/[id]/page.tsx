@@ -16,7 +16,10 @@ export default async function BriefItemDetailPage({ params }: { params: Promise<
   const item = await getBriefItemDetail(id);
   if (!item) notFound();
 
-  const highlightSections = item.displaySections.filter((section) =>
+  const visibleSections = item.displaySections
+    .map(sanitizeDisplaySection)
+    .filter((section) => section.fields.length > 0);
+  const highlightSections = visibleSections.filter((section) =>
     ["关键要点", "影响分析", "机会线索", "风险提示", "研报观点"].includes(section.title)
   );
 
@@ -35,7 +38,6 @@ export default async function BriefItemDetailPage({ params }: { params: Promise<
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <span className="rounded bg-jade/10 px-2 py-1 text-xs font-semibold text-jade">{contentKindLabel(item.kind)}</span>
                 {item.sentimentLabel && <span className={sentimentClass(item.sentimentTone)}>{item.sentimentLabel}</span>}
-                {item.newsLevelLabel && <span className="rounded bg-ink px-2 py-1 text-xs font-semibold text-paper">{item.newsLevelLabel}</span>}
                 {item.newsTypeLabel && <span className="rounded border border-ink/10 px-2 py-1 text-xs text-ink/60">{item.newsTypeLabel}</span>}
               </div>
               <h1 className="max-w-[28ch] font-display text-4xl leading-[1.22] text-ink max-md:text-3xl">{item.title}</h1>
@@ -50,13 +52,13 @@ export default async function BriefItemDetailPage({ params }: { params: Promise<
 
         <div className="grid grid-cols-[minmax(0,1fr)_320px] gap-5 max-xl:grid-cols-1">
           <section className="grid gap-4">
-            {item.displaySections.map((section) => (
+            {visibleSections.map((section) => (
               <article key={section.title} id={section.title} className="detail-section-card p-5 max-sm:p-4">
                 <h2 className="mb-4 flex items-center gap-2 font-display text-[1.35rem] leading-7">
                   <FileText size={19} className="text-jade" />
                   {section.title}
                 </h2>
-                <div className={section.title === "基本信息" || section.title === "情绪与重要性" ? "grid grid-cols-2 gap-3 max-md:grid-cols-1" : "grid gap-3"}>
+                <div className={section.title === "基本信息" || section.title === "情绪指标" ? "grid grid-cols-2 gap-3 max-md:grid-cols-1" : "grid gap-3"}>
                   {section.fields.map((field) => (
                     <div key={`${section.title}-${field.label}`} className="detail-field border-b border-ink/10 pb-4 last:border-b-0 last:pb-0">
                       <div className="text-xs font-semibold text-ink/45">{field.label}</div>
@@ -76,8 +78,6 @@ export default async function BriefItemDetailPage({ params }: { params: Promise<
               </h2>
               <div className="grid gap-2">
                 <MiniStat label="情绪" value={item.sentimentLabel ?? "未标注"} />
-                <MiniStat label="重要性" value={item.newsLevelLabel ?? "未标注"} />
-                <MiniStat label="关联度" value={item.relevance === undefined ? "未标注" : String(item.relevance)} />
                 <MiniStat label="情绪得分" value={item.sentimentScore === undefined ? "未标注" : String(item.sentimentScore)} />
               </div>
             </section>
@@ -109,6 +109,15 @@ export default async function BriefItemDetailPage({ params }: { params: Promise<
       </div>
     </main>
   );
+}
+
+function sanitizeDisplaySection(section: { title: string; fields: DisplayField[] }) {
+  if (section.title === "来源说明") return { title: section.title, fields: [] };
+  const hiddenLabels = new Set(["来源", "新闻等级", "关联度", "数据来源"]);
+  return {
+    title: section.title === "情绪与重要性" ? "情绪指标" : section.title,
+    fields: section.fields.filter((field) => !hiddenLabels.has(field.label)),
+  };
 }
 
 function DisplayFieldDetail({ field }: { field: DisplayField }) {

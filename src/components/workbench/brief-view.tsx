@@ -1,10 +1,10 @@
-import { Archive, ChevronRight, Layers3, Newspaper, RefreshCw, Search, ShieldAlert, TrendingUp } from "lucide-react";
+import { Archive, ChevronRight, Flame, Layers3, Newspaper, RefreshCw, Search, Sparkles } from "lucide-react";
+import type { ComponentType } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { kindLabel } from "@/components/workbench/constants";
-import type { BriefHistory, BriefItem, DailyBrief, WatchTarget } from "@/components/workbench/types";
-import { EmptyState, IconButton, InsightPanel, SegmentedFilter } from "@/components/workbench/ui";
+import type { BriefHistory, BriefItem, DailyBrief, HotspotOverview, HotspotType, RollingHotspot, WatchTarget } from "@/components/workbench/types";
+import { EmptyState, IconButton, SegmentedFilter } from "@/components/workbench/ui";
 import {
-  collectSectionValues,
   formatDateTime,
   itemSearchText,
   sortBriefItems,
@@ -13,6 +13,7 @@ import {
 export function BriefView(props: {
   brief: DailyBrief | null;
   briefItems: BriefItem[];
+  hotspots: HotspotOverview;
   briefHistory: BriefHistory[];
   targets: WatchTarget[];
   loading: boolean;
@@ -47,8 +48,6 @@ export function BriefView(props: {
       .filter((item) => !text || itemSearchText(item).toLowerCase().includes(text))
       .sort((a, b) => sortBriefItems(a, b, "latest"));
   }, [visibleItems, targetFilter, kindFilter, sentimentFilter, newsTypeFilter, keyword]);
-  const riskNotes = collectSectionValues(filteredItems, "风险提示", 5);
-  const opportunityNotes = collectSectionValues(filteredItems, "机会线索", 5);
 
   return (
     <div className="grid gap-5">
@@ -170,8 +169,24 @@ export function BriefView(props: {
         </section>
 
         <aside className="grid content-start gap-4">
-          <InsightPanel icon={TrendingUp} title="机会线索" items={opportunityNotes} tone="positive" />
-          <InsightPanel icon={ShieldAlert} title="风险提示" items={riskNotes} tone="danger" />
+          <HotspotTickerPanel
+            title="行业滚动"
+            icon={Flame}
+            type="industry"
+            gainItems={props.hotspots.industries}
+            declineItems={props.hotspots.industryDeclines}
+            updatedAt={props.hotspots.updatedAt}
+            allHref="/hotspots/industry"
+          />
+          <HotspotTickerPanel
+            title="概念滚动"
+            icon={Sparkles}
+            type="concept"
+            gainItems={props.hotspots.concepts}
+            declineItems={props.hotspots.conceptDeclines}
+            updatedAt={props.hotspots.updatedAt}
+            allHref="/hotspots/concept"
+          />
           <section className="panel p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <h3 className="font-display text-xl">速览归档</h3>
@@ -196,16 +211,109 @@ export function BriefView(props: {
   );
 }
 
+function HotspotTickerPanel({
+  title,
+  icon: Icon,
+  type,
+  gainItems,
+  declineItems,
+  updatedAt,
+  allHref,
+}: {
+  title: string;
+  icon: ComponentType<{ size?: number; className?: string }>;
+  type: HotspotType;
+  gainItems: RollingHotspot[];
+  declineItems: RollingHotspot[];
+  updatedAt: string;
+  allHref: string;
+}) {
+  const [mode, setMode] = useState<"gain" | "decline">("gain");
+  const visibleItems = mode === "gain" ? gainItems : declineItems;
+  return (
+    <section className={`hotspot-panel hotspot-panel-${type} p-4`}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <p className="section-kicker">{type === "industry" ? "申万一级行业" : "聚源概念"}</p>
+          <h3 className="mt-1 flex items-center gap-2 font-display text-xl">
+            <span className="hotspot-icon">
+              <Icon size={17} />
+            </span>
+            {title}
+          </h3>
+        </div>
+        <a href={allHref} className="hotspot-all-link">
+          查看全部
+          <ChevronRight size={14} />
+        </a>
+      </div>
+
+      <div className="hotspot-panel-toolbar">
+        <div className="hotspot-mode-switch" role="group" aria-label={`${title}排序`}>
+          <button type="button" className={mode === "gain" ? "is-active" : ""} onClick={() => setMode("gain")}>
+            涨幅
+          </button>
+          <button type="button" className={mode === "decline" ? "is-active" : ""} onClick={() => setMode("decline")}>
+            跌幅
+          </button>
+        </div>
+        <span className="hotspot-count">{visibleItems.length}</span>
+      </div>
+
+      {visibleItems.length === 0 ? (
+        <div className="hotspot-empty">暂无热点数据</div>
+      ) : (
+        <div className="hotspot-scroll" role="list" aria-label={title}>
+          <div className="hotspot-scroll-track">
+            {visibleItems.map((item, index) => (
+              <HotspotTickerCard key={item.code} item={item} index={index} />
+            ))}
+            <div aria-hidden="true" className="contents">
+              {visibleItems.map((item, index) => (
+                <HotspotTickerCard key={`${item.code}-ghost`} item={item} index={index} ghost />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 flex items-center justify-between gap-2 text-[0.68rem] font-semibold text-ink/42">
+        <span>实时行情</span>
+        {updatedAt && <span>{updatedAt.slice(5, 16)}</span>}
+      </div>
+    </section>
+  );
+}
+
+function HotspotTickerCard({ item, index, ghost }: { item: RollingHotspot; index: number; ghost?: boolean }) {
+  const href = `/hotspots/${item.type}/${item.code}`;
+  const content = (
+    <>
+      <span className="hotspot-rank">{String(index + 1).padStart(2, "0")}</span>
+      <span className="min-w-0">
+        <strong>{item.name}</strong>
+        <small>{item.leadStockName ? `领涨 ${item.leadStockName}` : `${item.stockUp}涨 / ${item.stockDown}跌`}</small>
+      </span>
+      <span className={marketValueClass(item.changeRatio)}>{formatPercent(item.changeRatio)}</span>
+    </>
+  );
+  if (ghost) {
+    return <div className="hotspot-row">{content}</div>;
+  }
+  return (
+    <a href={href} className="hotspot-row" title={`${item.name} ${formatPercent(item.changeRatio)}`}>
+      {content}
+    </a>
+  );
+}
+
 function BriefItemCard({ item }: { item: BriefItem }) {
   return (
     <article className={`brief-card ${briefCardToneClass(item.kind)} p-4 transition`}>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className={kindBadgeClass(item.kind)}>{kindLabel[item.kind]}</span>
         {item.sentimentLabel && <span className={sentimentBadgeClass(item.sentimentTone)}>{item.sentimentLabel}</span>}
-        {item.newsLevelLabel && <span className="rounded bg-ink px-2 py-1 text-xs font-semibold text-paper">{item.newsLevelLabel}</span>}
         {item.newsTypeLabel && <span className="rounded border border-ink/10 px-2 py-1 text-xs text-ink/55">{item.newsTypeLabel}</span>}
-        {item.relevance !== undefined && <span className="text-xs text-ink/45">关联度 {item.relevance}</span>}
-        <span className="text-xs text-ink/45">{item.source}</span>
         <span className="text-xs text-ink/45">{formatDateTime(item.publishedAt)}</span>
         {item.target && <span className="text-xs text-persimmon">{item.target.name}</span>}
       </div>
@@ -237,4 +345,15 @@ function sentimentBadgeClass(tone?: "positive" | "neutral" | "negative") {
   if (tone === "positive") return "rounded bg-jade/10 px-2 py-1 text-xs font-semibold text-jade";
   if (tone === "negative") return "rounded bg-persimmon/10 px-2 py-1 text-xs font-semibold text-persimmon";
   return "rounded bg-brass/10 px-2 py-1 text-xs font-semibold text-brass";
+}
+
+function formatPercent(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "--";
+  const percent = value * 100;
+  return `${percent > 0 ? "+" : ""}${percent.toFixed(2)}%`;
+}
+
+function marketValueClass(value: number | null | undefined) {
+  if (value === null || value === undefined || value === 0) return "market-flat";
+  return value > 0 ? "market-up" : "market-down";
 }

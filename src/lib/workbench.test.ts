@@ -64,7 +64,7 @@ describe("daily brief generation", () => {
           {
             kind: "news" as const,
             title: "白酒板块库存周期出现新变化",
-            source: "今日投资",
+            source: "新闻数据",
             publishedAt: new Date("2026-07-23T01:00:00.000Z"),
             summary: "自选股相关产业新闻摘要。",
             rawRef: "investoday:news:1",
@@ -139,7 +139,7 @@ describe("daily brief generation", () => {
           {
             kind: "news" as const,
             title: "重要新闻",
-            source: "今日投资",
+            source: "新闻数据",
             publishedAt: new Date("2026-07-23T01:00:00.000Z"),
             summary: "重要新闻摘要。",
             rawRef: "investoday:news:1",
@@ -148,7 +148,7 @@ describe("daily brief generation", () => {
           {
             kind: "news" as const,
             title: "普通新闻",
-            source: "今日投资",
+            source: "新闻数据",
             publishedAt: new Date("2026-07-23T01:10:00.000Z"),
             summary: "普通新闻摘要。",
             rawRef: "investoday:news:2",
@@ -339,7 +339,7 @@ describe("stock code quick add", () => {
   it("rejects an unknown stock name instead of saving a pending pseudo code", async () => {
     const run = vi.fn().mockResolvedValue({ ok: false, stdout: "", stderr: "invalid api" });
     const adapter = new InvestodayDataAdapter(run);
-    await expect(adapter.resolveStock({ name: "暂未收录股票" })).rejects.toThrow("未能从今日投资数据识别股票名称");
+    await expect(adapter.resolveStock({ name: "暂未收录股票" })).rejects.toThrow("未能从数据接口识别股票名称");
     return;
 
     await expect(adapter.resolveStock({ name: "暂未收录股票" })).resolves.toEqual({
@@ -356,7 +356,7 @@ describe("stock code quick add", () => {
     const run = vi.fn().mockResolvedValue({ ok: false, stdout: "", stderr: "invalid api" });
     const adapter = new InvestodayDataAdapter(run);
 
-    await expect(adapter.resolveStock({ name: "暂未收录股票" })).rejects.toThrow("未能从今日投资数据识别股票名称");
+    await expect(adapter.resolveStock({ name: "暂未收录股票" })).rejects.toThrow("未能从数据接口识别股票名称");
   });
 
   it("resolves sector names through industries", async () => {
@@ -558,7 +558,7 @@ describe("brief item display mapping", () => {
     const display = buildBriefItemDisplay({
       kind: "news",
       title: "永兴材料发布重要新闻",
-      source: "今日投资新闻",
+      source: "新闻数据",
       publishedAt: new Date("2026-07-23T08:00:00.000Z"),
       summary: "摘要内容",
       rawRef: "internal",
@@ -599,8 +599,9 @@ describe("brief item display mapping", () => {
 });
 
 describe("local skill catalog", () => {
-  it("registers the five local skills as product features", () => {
+  it("registers the six local skills as product features", () => {
     expect(getSkillCatalog().map((skill) => skill.key)).toEqual([
+      "investoday-stock-market-broadcast",
       "investoday-research-report-analysis",
       "investoday-stock-research-interpretation",
       "investoday-industry-chief-analyst",
