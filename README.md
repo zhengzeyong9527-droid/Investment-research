@@ -14,6 +14,35 @@
 - 评测：`pnpm eval` 内置 50 个投研 case，可输出 Markdown/JSON 报告。
 - 安全：HTML artifact 加 CSP / `nosniff`，写接口支持 `APP_AUTH_TOKEN` 最小鉴权开关。
 
+## 产品截图
+
+自选速览：围绕自选股、行业、新闻、研报和公告做每日信息聚合，支持范围筛选、情绪筛选和行业滚动观察。
+
+![自选速览](docs/screenshots/workbench-watchlist-digest.png)
+
+当日大盘：展示核心指数、分时/日周月 K、区间表现、赚钱效应、行业轮动，并可触发盘面播报 Agent。
+
+![当日大盘](docs/screenshots/workbench-market-overview.png)
+
+投研 Agent 多轮对话：默认智能调度，也可以选择具体能力。每轮问题会生成一个可追踪的 `AgentRun`，回答以 Markdown 渲染。
+
+![投研 Agent 多轮对话](docs/screenshots/workbench-agent-chat-report.png)
+
+Agent 研究报告正文：支持结构化结论、核心依据、主要风险、表格和长文阅读，执行过程与证据链可在“查看过程”中展开。
+
+![Agent 研究报告正文](docs/screenshots/workbench-agent-report-detail.png)
+
+## 核心功能
+
+- 自选速览：对自选标的生成新闻、研报、公告和市场线索摘要。
+- 当日大盘：聚合指数行情、赚钱效应、行业表现、板块热度和市场新闻。
+- 盘面播报 Agent：调用 `investoday-stock-market-broadcast` skill，对市场环境进行自动解读。
+- 研究问答 Agent：支持公司研究、研报解读、行业研究、成长分析、解套顾问等 skill。
+- 多轮对话：同一会话内继承标的、时间窗口、输出偏好和上下文约束。
+- 证据链：每次回答保留 ToolCall、EvidenceRecord、ModelCall、SkillRun 和 verification。
+- 本地 RAG：支持把自有文档摄取为 RagDocument/RagChunk，用于回答时召回。
+- 评测报告：`pnpm eval` 输出 50 个 case 的规则评测结果，便于回归和演示。
+
 ## 总体架构
 
 ```mermaid
