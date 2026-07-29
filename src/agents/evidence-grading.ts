@@ -9,12 +9,14 @@ export type EvidenceGrade = {
   sourceCounts: Record<string, number>;
   entityMatched: boolean;
   notes: string[];
+  toolFailureCount?: number;
 };
 
 export function gradeEvidence(input: {
   skillKey: string;
   normalizedInput: JsonRecord;
   evidence: EvidenceRecordInput[];
+  evidenceGaps?: Array<{ toolKey: string; reason: string }>;
   now?: Date;
 }): EvidenceGrade {
   const evidence = input.evidence;
@@ -41,6 +43,11 @@ export function gradeEvidence(input: {
   if ((stock || industry) && evidence.length > 0 && !entityMatched) {
     missing.push("entity_matched_evidence");
   }
+  const toolFailureCount = input.evidenceGaps?.length ?? 0;
+  if (toolFailureCount > 0) {
+    missing.push("tool_failure_gap");
+    notes.push(`${toolFailureCount} tool call(s) failed during evidence collection.`);
+  }
 
   const now = input.now ?? new Date();
   const maxAgeDays = Number(input.normalizedInput.timeWindowDays ?? (industry ? 90 : 180)) + 14;
@@ -55,7 +62,7 @@ export function gradeEvidence(input: {
   const base = Math.min(0.65, evidence.length * 0.08);
   const diversityBoost = Math.min(0.2, diversity * 0.05);
   const entityBoost = entityMatched || (!stock && !industry) ? 0.15 : 0;
-  const penalty = missing.length * 0.2 + stale.length * 0.03;
+  const penalty = missing.length * 0.2 + stale.length * 0.03 + toolFailureCount * 0.08;
   const score = clamp(base + diversityBoost + entityBoost - penalty, 0, 1);
   const passed = missing.length === 0 && score >= 0.25;
 
@@ -68,6 +75,7 @@ export function gradeEvidence(input: {
     sourceCounts,
     entityMatched,
     notes,
+    toolFailureCount,
   };
 }
 

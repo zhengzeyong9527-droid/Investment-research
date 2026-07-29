@@ -21,6 +21,14 @@ export type ExecutableAgentRun = {
   question: string;
   skillKey: string;
   inputPayload: JsonRecord;
+  graphState?: JsonRecord;
+};
+
+export type EvidenceGap = {
+  toolKey: string;
+  reason: string;
+  sourceEndpoint?: string;
+  retryable?: boolean;
 };
 
 export type AgentRuntimeRepository = {
@@ -75,7 +83,7 @@ export async function executeAgentRunJob(input: {
   toolRegistry?: ToolRegistry;
   modelProvider?: ModelProvider;
 }) {
-  const repository = input.repository;
+  const repository = input.run.graphState ? withGraphStateRepository(input.repository, input.run.graphState) : input.repository;
   const toolRegistry = input.toolRegistry ?? createToolRegistry();
   const modelProvider = input.modelProvider ?? new OpenAIModelProvider();
   const agentKey = (input.run.agentKey ?? "research-router-agent") as AgentKey;
@@ -102,6 +110,24 @@ export async function executeAgentRunJob(input: {
       span.end();
     }
   });
+}
+
+function withGraphStateRepository(repository: AgentRuntimeRepository, graphState: JsonRecord): AgentRuntimeRepository {
+  return {
+    ...repository,
+    updateAgentRun(id, data) {
+      if (!data.outputJson || typeof data.outputJson !== "object" || Array.isArray(data.outputJson)) {
+        return repository.updateAgentRun(id, data);
+      }
+      return repository.updateAgentRun(id, {
+        ...data,
+        outputJson: {
+          ...(data.outputJson as Record<string, unknown>),
+          graphState,
+        },
+      });
+    },
+  };
 }
 
 async function runMarketBroadcast(
@@ -210,9 +236,10 @@ async function runResearchRouter(
 
   await repository.updateAgentRun(run.id, { status: "fetching_data", skillKey, inputPayload: normalizedInput });
   const memoryHits = await retrieveMemory({ ...run, inputPayload: normalizedInput }, toolRegistry, context);
-  const evidence = await fetchEvidenceForSkill(skillKey, normalizedInput, toolRegistry, context);
+  const evidenceGaps: EvidenceGap[] = [];
+  const evidence = await fetchEvidenceForSkill(skillKey, normalizedInput, toolRegistry, context, evidenceGaps);
   await repository.writeEvidence(run.id, evidence);
-  const evidenceGrade = gradeEvidence({ skillKey, normalizedInput, evidence });
+  const evidenceGrade = gradeEvidence({ skillKey, normalizedInput, evidence, evidenceGaps });
   if (!evidenceGrade.passed && evidence.length === 0) {
     const outputMarkdown = insufficientEvidenceMarkdown(evidenceGrade, normalizedInput);
     const verification = verifyAgentOutput({ markdown: outputMarkdown, inputPayload: normalizedInput, evidence, evidenceGrade });
@@ -226,6 +253,7 @@ async function runResearchRouter(
         intentPlan,
         resolvedEntities: resolvedEntitiesToJson(resolved.entities),
         evidenceGroups: buildEvidenceGroups(evidence),
+        evidenceGaps,
         supportingSkillRuns: [],
       }),
       error: null,
@@ -238,6 +266,7 @@ async function runResearchRouter(
         intentPlan,
         resolvedEntities: resolvedEntitiesToJson(resolved.entities),
         evidenceGroups: buildEvidenceGroups(evidence),
+        evidenceGaps,
         supportingSkillRuns: [],
       }),
     };
@@ -263,6 +292,7 @@ async function runResearchRouter(
       intentPlan,
       resolvedEntities: resolvedEntitiesToJson(resolved.entities),
       evidenceGroups: buildEvidenceGroups(evidence),
+      evidenceGaps,
       supportingSkillRuns: [],
     }),
     error: null,
@@ -445,7 +475,8 @@ async function fetchEvidenceForSkill(
   skillKey: string,
   input: JsonRecord,
   toolRegistry: ToolRegistry,
-  context: ReturnType<typeof toolContext>
+  context: ReturnType<typeof toolContext>,
+  evidenceGaps: EvidenceGap[] = []
 ) {
   if (skillKey === "investoday-ai-unwind-advisor") {
     const evidence: EvidenceRecordInput[] = [];
@@ -460,16 +491,16 @@ async function fetchEvidenceForSkill(
       "stock.unwindSignalDetails",
       "news.entityRelated",
     ]) {
-      const result = await callOptionalTool(toolKey, input, toolRegistry, context);
+      const result = await callOptionalTool(toolKey, input, toolRegistry, context, evidenceGaps);
       evidence.push(...toolDataToEvidence(toolKey, result.data));
     }
     if (input.industryCode || input.industryName) {
-      const result = await callOptionalTool("industry.data", input, toolRegistry, context);
+      const result = await callOptionalTool("industry.data", input, toolRegistry, context, evidenceGaps);
       evidence.push(...toolDataToEvidence("industry.data", result.data));
     }
     if (input.conceptCode || input.conceptName) {
       for (const toolKey of ["concept.resolve", "concept.quote", "concept.stockRealtime", "report.sentiment", "news.entityRelated"]) {
-        const result = await callOptionalTool(toolKey, input, toolRegistry, context);
+        const result = await callOptionalTool(toolKey, input, toolRegistry, context, evidenceGaps);
         evidence.push(...toolDataToEvidence(toolKey, result.data));
       }
     }
@@ -479,40 +510,60 @@ async function fetchEvidenceForSkill(
   if (isIndustryResearchSkill(skillKey)) {
     const evidence: EvidenceRecordInput[] = [];
     for (const toolKey of ["industry.data", "report.query", "report.sentiment", "report.vectorSearch"]) {
-      const result = await callOptionalTool(toolKey, input, toolRegistry, context);
+      const result = await callOptionalTool(toolKey, input, toolRegistry, context, evidenceGaps);
       evidence.push(...toolDataToEvidence(toolKey, result.data));
     }
     return evidence.slice(0, 60);
   }
 
   if (!isStockResearchSkill(skillKey)) {
-    const result = await callOptionalTool("stock.briefItems", input, toolRegistry, context);
+    const result = await callOptionalTool("stock.briefItems", input, toolRegistry, context, evidenceGaps);
     return toolDataToEvidence("stock.briefItems", result.data);
   }
 
   const evidence: EvidenceRecordInput[] = [];
   for (const toolKey of ["stock.basicInfo", "stock.briefItems", "report.query", "report.sentiment", "report.vectorSearch", "report.forecastRatings"]) {
-    const result = await callOptionalTool(toolKey, input, toolRegistry, context);
+    const result = await callOptionalTool(toolKey, input, toolRegistry, context, evidenceGaps);
     evidence.push(...toolDataToEvidence(toolKey, result.data));
   }
   if (input.industryCode || input.industryName) {
-    const result = await callOptionalTool("industry.data", input, toolRegistry, context);
+    const result = await callOptionalTool("industry.data", input, toolRegistry, context, evidenceGaps);
     evidence.push(...toolDataToEvidence("industry.data", result.data));
   }
   if (input.conceptCode || input.conceptName) {
     for (const toolKey of ["concept.resolve", "concept.quote", "news.entityRelated"]) {
-      const result = await callOptionalTool(toolKey, input, toolRegistry, context);
+      const result = await callOptionalTool(toolKey, input, toolRegistry, context, evidenceGaps);
       evidence.push(...toolDataToEvidence(toolKey, result.data));
     }
   }
   return evidence.slice(0, 50);
 }
 
-async function callOptionalTool(toolKey: string, input: JsonRecord, toolRegistry: ToolRegistry, context: ReturnType<typeof toolContext>) {
+async function callOptionalTool(
+  toolKey: string,
+  input: JsonRecord,
+  toolRegistry: ToolRegistry,
+  context: ReturnType<typeof toolContext>,
+  evidenceGaps: EvidenceGap[]
+) {
   try {
     return await toolRegistry.call(toolKey, input, context);
-  } catch {
+  } catch (error) {
+    evidenceGaps.push({
+      toolKey,
+      reason: error instanceof Error ? error.message : String(error),
+      sourceEndpoint: safeSourceEndpoint(toolRegistry, toolKey),
+      retryable: true,
+    });
     return { toolCallId: null, data: [] };
+  }
+}
+
+function safeSourceEndpoint(toolRegistry: ToolRegistry, toolKey: string) {
+  try {
+    return toolRegistry.get(toolKey).sourceEndpoint;
+  } catch {
+    return toolKey;
   }
 }
 

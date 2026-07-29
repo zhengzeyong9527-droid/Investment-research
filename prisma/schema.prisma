@@ -263,6 +263,40 @@ model ResearchArtifact {
   evidence    EvidenceRecord[]
 }
 
+model RagDocument {
+  id          String     @id
+  title       String
+  content     String
+  source      String     @default("local")
+  publishedAt DateTime?
+  metadata    String     @default("{}")
+  chunkCount  Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  chunks      RagChunk[]
+
+  @@index([source])
+  @@index([publishedAt])
+}
+
+model RagChunk {
+  id            String       @id
+  documentId    String
+  title         String
+  content       String
+  source        String       @default("local")
+  chunkIndex    Int
+  metadata      String       @default("{}")
+  embedding     Unsupported("vector")?
+  embeddingJson String       @default("[]")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  document      RagDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([source])
+}
+
 model AgentEvalCase {
   id               String            @id @default(cuid())
   agentKey         String

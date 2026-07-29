@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
+import { checkRateLimit, requireAppAuth } from "@/lib/api-security";
 import { getSkillRun } from "@/lib/repositories";
 import { normalizeSkillOutput } from "@/skills/output";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = requireAppAuth(request);
+  if (auth) return auth;
+  const limited = checkRateLimit(request, "skill-html", { limit: 60, windowMs: 60_000 });
+  if (limited) return limited;
   const { id } = await params;
   const run = await getSkillRun(id);
   if (!run) {
@@ -18,6 +23,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
+      "Content-Security-Policy": [
+        "default-src 'none'",
+        "style-src 'unsafe-inline'",
+        "img-src data:",
+        "script-src 'none'",
+        "connect-src 'none'",
+        "form-action 'none'",
+        "base-uri 'none'",
+        "frame-ancestors 'self'",
+        "sandbox allow-same-origin",
+      ].join("; "),
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }

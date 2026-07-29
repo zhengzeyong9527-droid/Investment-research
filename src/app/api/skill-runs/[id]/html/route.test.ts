@@ -24,6 +24,9 @@ describe("skill run HTML output route", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
+    expect(response.headers.get("content-security-policy")).toContain("script-src 'none'");
+    expect(response.headers.get("content-security-policy")).toContain("form-action 'none'");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(await response.text()).toContain("Stored");
   });
 

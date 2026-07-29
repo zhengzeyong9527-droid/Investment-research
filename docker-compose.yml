@@ -1,0 +1,83 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: investoday_agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - investoday-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d investoday_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+      - pnpm-store:/root/.local/share/pnpm/store
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/investoday_agent
+      REDIS_URL: redis://redis:6379
+      RAG_EMBEDDING_PROVIDER: deterministic
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-deepseek-v4-flash}
+      APP_AUTH_TOKEN: ${APP_AUTH_TOKEN:-}
+    command: >
+      sh -c "corepack enable &&
+      pnpm install --frozen-lockfile=false &&
+      pnpm db:push &&
+      pnpm build &&
+      pnpm start"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+      - pnpm-store:/root/.local/share/pnpm/store
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/investoday_agent
+      REDIS_URL: redis://redis:6379
+      RAG_EMBEDDING_PROVIDER: deterministic
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-deepseek-v4-flash}
+      APP_AUTH_TOKEN: ${APP_AUTH_TOKEN:-}
+    command: >
+      sh -c "corepack enable &&
+      pnpm install --frozen-lockfile=false &&
+      pnpm db:push &&
+      pnpm worker:agent"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  investoday-postgres:
+  pnpm-store:

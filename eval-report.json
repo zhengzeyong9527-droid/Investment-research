@@ -1,0 +1,768 @@
+{
+  "summary": {
+    "total": 50,
+    "passed": 50,
+    "averageScore": 0.864,
+    "averageMetrics": {
+      "completion": 1,
+      "toolSuccessRate": 1,
+      "citationPrecision": 1,
+      "ragRecallAtK": 0.32,
+      "hallucinationRate": 0,
+      "latencyMs": 745,
+      "costCents": 0
+    }
+  },
+  "results": [
+    {
+      "caseId": "eval-001",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 500,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-002",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 510,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-003",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 520,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-004",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 530,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-005",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 540,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-006",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 550,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-007",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 560,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-008",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 570,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-009",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 580,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-010",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 590,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-011",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 600,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-012",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 610,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-013",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 620,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-014",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 630,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-015",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 640,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-016",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 650,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-017",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 660,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-018",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 670,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-019",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 680,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-020",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 690,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-021",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 700,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-022",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 710,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-023",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 720,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-024",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 730,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-025",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 740,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-026",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 750,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-027",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 760,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-028",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 770,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-029",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 780,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-030",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 790,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-031",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 800,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-032",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 810,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-033",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 820,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-034",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 830,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-035",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 840,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-036",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 850,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-037",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 860,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-038",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 870,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-039",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 880,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-040",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 890,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-041",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 900,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-042",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 910,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-043",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 920,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-044",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 930,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-045",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 940,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-046",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 950,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-047",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 960,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-048",
+      "passed": true,
+      "score": 1,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 1,
+        "hallucinationRate": 0,
+        "latencyMs": 970,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-049",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 980,
+        "costCents": 0
+      },
+      "notes": []
+    },
+    {
+      "caseId": "eval-050",
+      "passed": true,
+      "score": 0.8,
+      "metrics": {
+        "completion": 1,
+        "toolSuccessRate": 1,
+        "citationPrecision": 1,
+        "ragRecallAtK": 0,
+        "hallucinationRate": 0,
+        "latencyMs": 990,
+        "costCents": 0
+      },
+      "notes": []
+    }
+  ]
+}

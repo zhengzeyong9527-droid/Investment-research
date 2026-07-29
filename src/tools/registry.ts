@@ -1,6 +1,7 @@
 import { defaultCommandRunner, InvestodayDataAdapter } from "@/lib/investoday";
 import { fetchMarketOverview } from "@/lib/market-overview";
 import { DEFAULT_AGENT_USER_ID, MemoryService } from "@/agents/memory";
+import { getDefaultRagService, type RagHit } from "@/rag/local-rag";
 import type { ToolManifest, ToolRegistry, ToolRegistryOptions, ToolRuntimeContext } from "@/tools/types";
 
 const TOOL_MANIFESTS: ToolManifest[] = [
@@ -25,6 +26,10 @@ const TOOL_MANIFESTS: ToolManifest[] = [
   tool("concept.quote", "Fetch concept realtime quote", "concept-quote/realtime-v2"),
   tool("concept.stockRealtime", "Fetch concept component realtime quotes", "concept-quote/stock-realtime"),
   tool("valuation.data", "Fetch valuation data", "valuation.data"),
+  tool("rag.ingestDocument", "Ingest a local document into the RAG index", "rag.ingestDocument", "write"),
+  tool("rag.search", "Search local RAG chunks", "rag.search"),
+  tool("rag.hybridSearch", "Hybrid search local RAG chunks", "rag.hybridSearch"),
+  tool("rag.rerank", "Rerank local RAG hits", "rag.rerank"),
   tool("memory.search", "Search long-term memory", "memory.search"),
   tool("memory.write", "Write long-term memory", "memory.write", "write"),
   tool("skill.run", "Run a registered skill through the Skill Adapter", "skill.run"),
@@ -57,7 +62,14 @@ export function createToolRegistry(options: ToolRegistryOptions = {}): ToolRegis
           error: null,
           sourceEndpoint: manifest.sourceEndpoint,
         });
-        return { toolCallId: toolCall.id, data: data as T };
+        return {
+          toolCallId: toolCall.id,
+          data: data as T,
+          ok: true,
+          error: null,
+          sourceEndpoint: manifest.sourceEndpoint,
+          latencyMs: Date.now() - startedAt,
+        };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const toolCall = await context.recordToolCall({
@@ -295,6 +307,33 @@ async function executeTool(toolKey: string, input: Record<string, unknown>, run:
     if (!conceptCode) return [];
     return fetchJsonRecord(run, "concept-quote/stock-realtime", ["conceptType=jy", `conceptCode=${conceptCode}`, "pageSize=1000"]);
   }
+  if (toolKey === "rag.ingestDocument") {
+    const title = stringOrUndefined(input.title);
+    const content = stringOrUndefined(input.content);
+    if (!title || !content) throw new Error("rag.ingestDocument requires title and content");
+    return getDefaultRagService().ingestDocument({
+      title,
+      content,
+      source: stringOrUndefined(input.source) ?? "local-upload",
+      publishedAt: stringOrUndefined(input.publishedAt) ?? null,
+      metadata: recordMetadata(input.metadata),
+    });
+  }
+  if (toolKey === "rag.search" || toolKey === "rag.hybridSearch") {
+    const query = stringOrUndefined(input.query) ?? stringOrUndefined(input.question);
+    if (!query) return [];
+    return getDefaultRagService().search({
+      query,
+      topK: numberOrUndefined(input.topK) ?? numberOrUndefined(input.limit) ?? 8,
+      filters: recordMetadata(input.filters),
+    });
+  }
+  if (toolKey === "rag.rerank") {
+    const hits = Array.isArray(input.hits) ? (input.hits as RagHit[]) : [];
+    return hits
+      .map((hit, index) => ({ ...hit, score: Number(hit.score ?? 0) + Math.max(0, 0.001 * (hits.length - index)) }))
+      .sort((a, b) => Number(b.score ?? 0) - Number(a.score ?? 0));
+  }
   if (toolKey === "memory.search") {
     return new MemoryService().search({
       userId: context.userId ?? DEFAULT_AGENT_USER_ID,
@@ -456,6 +495,10 @@ function stringOrUndefined(value: unknown) {
 function numberOrUndefined(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
+}
+
+function recordMetadata(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, string | number | boolean | null | undefined>) : undefined;
 }
 
 function extractStockCode(text: string) {

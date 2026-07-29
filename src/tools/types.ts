@@ -33,8 +33,12 @@ export type ToolRuntimeContext = {
 };
 
 export type ToolResult<T = unknown> = {
-  toolCallId: string;
+  toolCallId: string | null;
   data: T;
+  ok?: boolean;
+  error?: string | null;
+  sourceEndpoint?: string;
+  latencyMs?: number;
 };
 
 export type ToolRegistry = {

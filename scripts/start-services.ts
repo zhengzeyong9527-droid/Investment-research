@@ -109,7 +109,13 @@ async function ensureVectorType() {
   });
   await client.connect();
   try {
-    await client.query("DO $$ BEGIN CREATE DOMAIN vector AS text; EXCEPTION WHEN duplicate_object THEN NULL; END $$;");
+    await client.query("CREATE EXTENSION IF NOT EXISTS vector;");
+  } catch (error) {
+    console.warn(
+      `pgvector extension is not available in the embedded Postgres runtime: ${
+        error instanceof Error ? error.message : String(error)
+      }. Use docker compose for full local RAG verification.`
+    );
   } finally {
     await client.end();
   }

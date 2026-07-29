@@ -1,6 +1,6 @@
 import { Worker } from "bullmq";
 import IORedis from "ioredis";
-import { executeAgentRunJob } from "@/agents/executor";
+import { executeAgentGraphJob } from "@/agents/langgraph-runtime";
 import { AGENT_QUEUE_NAME, type AgentJob } from "@/agents/queue";
 import { OpenAIModelProvider } from "@/agents/model-provider";
 import { createToolRegistry } from "@/tools/registry";
@@ -25,7 +25,7 @@ new Worker<AgentJob>(
   async (job) => {
     const run = await getAgentRunForExecution(job.data.runId);
     if (!run) throw new Error(`AgentRun not found: ${job.data.runId}`);
-    await executeAgentRunJob({ run, repository, toolRegistry, modelProvider });
+    await executeAgentGraphJob({ run, repository, toolRegistry, modelProvider });
   },
   { connection, concurrency: 2 }
 );
