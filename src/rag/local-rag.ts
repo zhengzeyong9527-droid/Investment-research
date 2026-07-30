@@ -300,16 +300,17 @@ export function chunkDocument(content: string, options: { maxChars?: number; ove
 }
 
 export function getDefaultRagService() {
+  defaultRagService ??= new LocalRagService({
+    store: process.env.NODE_ENV === "test" ? new InMemoryRagStore() : new PrismaRagStore(),
+    embeddingProvider:
+      process.env.NODE_ENV === "test" || process.env.RAG_EMBEDDING_PROVIDER === "deterministic"
+        ? new DeterministicEmbeddingProvider()
+        : new OpenAICompatibleEmbeddingProvider(),
+  });
   return defaultRagService;
 }
 
-const defaultRagService = new LocalRagService({
-  store: process.env.NODE_ENV === "test" ? new InMemoryRagStore() : new PrismaRagStore(),
-  embeddingProvider:
-    process.env.NODE_ENV === "test" || process.env.RAG_EMBEDDING_PROVIDER === "deterministic"
-      ? new DeterministicEmbeddingProvider()
-      : new OpenAICompatibleEmbeddingProvider(),
-});
+let defaultRagService: LocalRagService | null = null;
 
 function shapeDocumentRecord(record: Record<string, unknown>): RagDocumentRecord {
   return {

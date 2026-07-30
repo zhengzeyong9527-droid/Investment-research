@@ -1,63 +1,64 @@
-# Agent Eval Report
+# 真实 Agent Eval Report
 
-- total: 50
-- passed: 50
-- average_score: 0.864
-- completion: 1
-- tool_success: 1
-- citation_precision: 1
-- rag_recall_at_k: 0.32
+本报告只统计真实 AgentRun。任一 case 如果缺少 runId、ToolCall 或 ModelCall，会直接标记失败，不再计入伪成功。
+
+## 总览指标
+
+- total: 7
+- passed: 0
+- terminal_rate: 1
+- completion_rate: 0
+- tool_success_rate: 1
+- evidence_coverage_rate: 1
+- citation_precision: 0
+- rag_recall_at_k: 1
+- memory_recall_rate: null
+- cross_session_leak_rate: 0
+- stale_date_rate: 0
 - hallucination_rate: 0
+- latency_p50_ms: 18204
+- latency_p95_ms: 30362
+- total_cost_cents: 0
 
-| case | pass | score | notes |
-|---|---:|---:|---|
-| eval-001 | yes | 0.8 |  |
-| eval-002 | yes | 0.8 |  |
-| eval-003 | yes | 0.8 |  |
-| eval-004 | yes | 1 |  |
-| eval-005 | yes | 0.8 |  |
-| eval-006 | yes | 1 |  |
-| eval-007 | yes | 0.8 |  |
-| eval-008 | yes | 0.8 |  |
-| eval-009 | yes | 1 |  |
-| eval-010 | yes | 0.8 |  |
-| eval-011 | yes | 0.8 |  |
-| eval-012 | yes | 1 |  |
-| eval-013 | yes | 0.8 |  |
-| eval-014 | yes | 0.8 |  |
-| eval-015 | yes | 1 |  |
-| eval-016 | yes | 0.8 |  |
-| eval-017 | yes | 0.8 |  |
-| eval-018 | yes | 1 |  |
-| eval-019 | yes | 0.8 |  |
-| eval-020 | yes | 0.8 |  |
-| eval-021 | yes | 1 |  |
-| eval-022 | yes | 0.8 |  |
-| eval-023 | yes | 0.8 |  |
-| eval-024 | yes | 1 |  |
-| eval-025 | yes | 0.8 |  |
-| eval-026 | yes | 0.8 |  |
-| eval-027 | yes | 1 |  |
-| eval-028 | yes | 0.8 |  |
-| eval-029 | yes | 0.8 |  |
-| eval-030 | yes | 1 |  |
-| eval-031 | yes | 0.8 |  |
-| eval-032 | yes | 0.8 |  |
-| eval-033 | yes | 1 |  |
-| eval-034 | yes | 0.8 |  |
-| eval-035 | yes | 0.8 |  |
-| eval-036 | yes | 1 |  |
-| eval-037 | yes | 0.8 |  |
-| eval-038 | yes | 0.8 |  |
-| eval-039 | yes | 1 |  |
-| eval-040 | yes | 0.8 |  |
-| eval-041 | yes | 0.8 |  |
-| eval-042 | yes | 1 |  |
-| eval-043 | yes | 0.8 |  |
-| eval-044 | yes | 0.8 |  |
-| eval-045 | yes | 1 |  |
-| eval-046 | yes | 0.8 |  |
-| eval-047 | yes | 0.8 |  |
-| eval-048 | yes | 1 |  |
-| eval-049 | yes | 0.8 |  |
-| eval-050 | yes | 0.8 |  |
+## 失败 Case
+
+| case | runId | status | reasons |
+|---|---|---|---|
+| real-001#1 | cms6zjmfy00046vtw4rj9qvr4 | failed | unexpected_status:failed, citation_precision_low, memory_write_miss |
+| real-002#1 | cms6zk8ck000b6vtwnjtm6ljs | failed | unexpected_status:failed, citation_precision_low |
+| real-003#1 | cms6zkmeg000i6vtw9l16eld7 | failed | unexpected_status:failed, citation_precision_low |
+| real-004#1 | cms6zkxct000p6vtwzr2vd46q | failed | unexpected_status:failed, citation_precision_low |
+| real-005#1 | cms6zlczi000w6vtwcf5dmo0b | failed | unexpected_status:failed, citation_precision_low, memory_write_miss |
+| real-005#2 | cms6zlphb00126vtwe6cfiaxb | failed | unexpected_status:failed, entity_mismatch, citation_precision_low |
+| real-006#1 | cms6zm0e200196vtww5r63zw6 | failed | unexpected_status:failed, citation_precision_low |
+
+## 工具失败分布
+
+- none
+
+## 证据缺口与幻觉示例
+
+- real-001#1 / cms6zjmfy00046vtw4rj9qvr4: gaps=1, hallucination=0
+- real-002#1 / cms6zk8ck000b6vtwnjtm6ljs: gaps=1, hallucination=0
+- real-003#1 / cms6zkmeg000i6vtw9l16eld7: gaps=1, hallucination=0
+- real-004#1 / cms6zkxct000p6vtwzr2vd46q: gaps=1, hallucination=0
+- real-005#1 / cms6zlczi000w6vtwcf5dmo0b: gaps=1, hallucination=0
+
+## RAG 命中示例
+
+- real-001#1 / cms6zjmfy00046vtw4rj9qvr4: 茅台渠道风险 seed 文档(0.4411); 盘面播报口径 seed 文档(0.3155); 有色金属催化 seed 文档(0.2944)
+- real-002#1 / cms6zk8ck000b6vtwnjtm6ljs: 有色金属催化 seed 文档(0.5442); 盘面播报口径 seed 文档(0.3981); 茅台渠道风险 seed 文档(0.3961)
+- real-003#1 / cms6zkmeg000i6vtw9l16eld7: 盘面播报口径 seed 文档(0.6407); 茅台渠道风险 seed 文档(0.3596); 有色金属催化 seed 文档(0.279)
+- real-004#1 / cms6zkxct000p6vtwzr2vd46q: 茅台渠道风险 seed 文档(0.6245); 有色金属催化 seed 文档(0.3802); 盘面播报口径 seed 文档(0.3599)
+- real-005#1 / cms6zlczi000w6vtwcf5dmo0b: 茅台渠道风险 seed 文档(0.3625); 盘面播报口径 seed 文档(0.2925); 有色金属催化 seed 文档(0.2642)
+
+## 记忆结果
+
+- none
+
+## 成本与延迟
+
+- model_call_count: 14
+- token_input: 510548
+- token_output: 0
+- cost_cents: 0

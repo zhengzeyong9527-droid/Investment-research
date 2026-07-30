@@ -114,7 +114,6 @@ export async function executeAgentRunJob(input: {
 
 function withGraphStateRepository(repository: AgentRuntimeRepository, graphState: JsonRecord): AgentRuntimeRepository {
   return {
-    ...repository,
     updateAgentRun(id, data) {
       if (!data.outputJson || typeof data.outputJson !== "object" || Array.isArray(data.outputJson)) {
         return repository.updateAgentRun(id, data);
@@ -127,6 +126,16 @@ function withGraphStateRepository(repository: AgentRuntimeRepository, graphState
         },
       });
     },
+    appendAgentStep: repository.appendAgentStep.bind(repository),
+    listRecentAgentMessages: repository.listRecentAgentMessages?.bind(repository),
+    listRecentAgentRunInputs: repository.listRecentAgentRunInputs?.bind(repository),
+    appendAgentMessage: repository.appendAgentMessage?.bind(repository),
+    createSkillRun: repository.createSkillRun.bind(repository),
+    updateSkillRun: repository.updateSkillRun.bind(repository),
+    recordToolCall: repository.recordToolCall.bind(repository),
+    recordModelCall: repository.recordModelCall?.bind(repository),
+    writeEvidence: repository.writeEvidence.bind(repository),
+    writeMemoryItem: repository.writeMemoryItem.bind(repository),
   };
 }
 
@@ -215,25 +224,6 @@ async function runResearchRouter(
     await step(repository, run.id, 2, "missing_input", "completed", `Missing input: ${missingInputs.join(", ")}`);
     return null;
   }
-  if (skillKey === "investoday-ai-unwind-advisor" && normalizedInput.riskConfirmed !== true) {
-    const interruptMarkdown = "这个路径需要你先确认：本次仅做研究复盘和风险梳理，不直接给出交易指令。确认后我再继续。";
-    await repository.updateAgentRun(run.id, {
-      status: "interrupted",
-      skillKey,
-      outputMarkdown: interruptMarkdown,
-      outputJson: {
-        interrupt: { type: "risk_confirm", reason: "Research-only high-risk path requires confirmation.", message: interruptMarkdown },
-        intentPlan,
-        resolvedEntities: resolvedEntitiesToJson(resolved.entities),
-      },
-      error: null,
-      completedAt: new Date(),
-    });
-    await appendAssistantMessage(repository, run, interruptMarkdown);
-    await step(repository, run.id, 2, "risk_confirm", "completed", "Waiting for high-risk research confirmation.");
-    return null;
-  }
-
   await repository.updateAgentRun(run.id, { status: "fetching_data", skillKey, inputPayload: normalizedInput });
   const memoryHits = await retrieveMemory({ ...run, inputPayload: normalizedInput }, toolRegistry, context);
   const evidenceGaps: EvidenceGap[] = [];
@@ -248,13 +238,14 @@ async function runResearchRouter(
     await repository.updateAgentRun(run.id, {
       status: "completed",
       skillKey,
-      outputMarkdown,
+      outputMarkdown: skillKey === "investoday-ai-unwind-advisor" ? appendRiskBoundaryNotice(outputMarkdown) : outputMarkdown,
       outputJson: augmentOutputJson({}, memoryHits, evidenceGrade, verification, {
         intentPlan,
         resolvedEntities: resolvedEntitiesToJson(resolved.entities),
         evidenceGroups: buildEvidenceGroups(evidence),
         evidenceGaps,
         supportingSkillRuns: [],
+        ...(skillKey === "investoday-ai-unwind-advisor" ? unwindRiskBoundaryOutput(evidence.length > 0) : {}),
       }),
       error: null,
       model: modelProvider.model,
@@ -268,6 +259,7 @@ async function runResearchRouter(
         evidenceGroups: buildEvidenceGroups(evidence),
         evidenceGaps,
         supportingSkillRuns: [],
+        ...(skillKey === "investoday-ai-unwind-advisor" ? unwindRiskBoundaryOutput(evidence.length > 0) : {}),
       }),
     };
   }
@@ -281,25 +273,27 @@ async function runResearchRouter(
     evidence,
     memory: memoryHits,
   });
-  const verification = verifyAgentOutput({ markdown: skillResult.outputMarkdown, inputPayload: normalizedInput, evidence, evidenceGrade });
-  await commitMemory(repository, run, skillKey, normalizedInput, skillResult.outputMarkdown);
-  await appendAssistantMessage(repository, run, skillResult.outputMarkdown);
+  const finalMarkdown = skillKey === "investoday-ai-unwind-advisor" ? appendRiskBoundaryNotice(skillResult.outputMarkdown) : skillResult.outputMarkdown;
+  const verification = verifyAgentOutput({ markdown: finalMarkdown, inputPayload: normalizedInput, evidence, evidenceGrade });
+  await commitMemory(repository, run, skillKey, normalizedInput, finalMarkdown);
+  await appendAssistantMessage(repository, run, finalMarkdown);
   await repository.updateAgentRun(run.id, {
     status: "completed",
     skillKey,
-    outputMarkdown: skillResult.outputMarkdown,
+    outputMarkdown: finalMarkdown,
     outputJson: augmentOutputJson(skillResult.outputJson, memoryHits, evidenceGrade, verification, {
       intentPlan,
       resolvedEntities: resolvedEntitiesToJson(resolved.entities),
       evidenceGroups: buildEvidenceGroups(evidence),
       evidenceGaps,
       supportingSkillRuns: [],
+      ...(skillKey === "investoday-ai-unwind-advisor" ? unwindRiskBoundaryOutput(evidence.length > 0) : {}),
     }),
     error: null,
     model: modelProvider.model,
     completedAt: new Date(),
   });
-  return skillResult;
+  return { ...skillResult, outputMarkdown: finalMarkdown };
 }
 
 async function runAndPersistSkill(input: {
@@ -752,6 +746,18 @@ function augmentOutputJson(
     evidenceGrade,
     verification,
   };
+}
+
+function unwindRiskBoundaryOutput(evidenceReady: boolean) {
+  return {
+    unwindEvidenceReady: evidenceReady,
+    riskBoundaryNotice: "本回答仅做研究复盘和风险梳理，不构成交易指令；如需执行买卖操作，请自行决策并承担风险。",
+  };
+}
+
+function appendRiskBoundaryNotice(markdown: string) {
+  const notice = unwindRiskBoundaryOutput(true).riskBoundaryNotice;
+  return markdown.includes(notice) ? markdown : `${markdown.trim()}\n\n> ${notice}`;
 }
 
 function buildEvidenceGroups(evidence: EvidenceRecordInput[]) {

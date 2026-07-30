@@ -146,12 +146,14 @@ export async function executeAgentGraphJob(input: {
         });
         graphState.ragHits = Array.isArray(result.data) ? result.data : [];
         graphState.toolResults.push({ toolKey: "rag.search", ok: true, latencyMs: result.latencyMs ?? 0 });
+        await persistGraphDiagnostics(repository, input.run.id, graphState);
       } catch (error) {
         graphState.evidenceGaps.push({
           toolKey: "rag.search",
           reason: error instanceof Error ? error.message : String(error),
         });
         graphState.toolResults.push({ toolKey: "rag.search", ok: false });
+        await persistGraphDiagnostics(repository, input.run.id, graphState);
       }
     }
     if (isGenerateNode(agentKey, nodeKey)) {
@@ -163,6 +165,17 @@ export async function executeAgentGraphJob(input: {
       });
     }
   }
+}
+
+async function persistGraphDiagnostics(repository: AgentRuntimeRepository, runId: string, graphState: Record<string, unknown>) {
+  await repository.updateAgentRun(runId, {
+    outputJson: {
+      graphState,
+      ragHits: graphState.ragHits,
+      evidenceGaps: graphState.evidenceGaps,
+      toolResults: graphState.toolResults,
+    },
+  });
 }
 
 function isGenerateNode(agentKey: AgentKey, nodeKey: string) {

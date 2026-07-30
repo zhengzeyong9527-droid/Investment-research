@@ -1,26 +1,34 @@
-import { writeFileSync } from "node:fs";
-import { buildEvalReport, evaluateRunSnapshot, smokeEvalCases } from "@/eval/runner";
+import { loadDotEnv } from "@/lib/load-env";
 
-const smokeOnly = process.argv.includes("--smoke");
-const cases = smokeOnly ? smokeEvalCases().filter((item) => item.tags.includes("smoke")) : smokeEvalCases();
+loadDotEnv();
+if (!process.env.RAG_EMBEDDING_PROVIDER && !process.env.EMBEDDING_API_KEY) {
+  process.env.RAG_EMBEDDING_PROVIDER = "deterministic";
+}
+type RealEvalMode = "smoke" | "real" | "stress";
+const mode = parseMode(process.argv);
 
-const results = cases.map((item, index) =>
-  evaluateRunSnapshot({
-    caseId: item.id,
-    outputMarkdown: `结论基于证据 [1]。${item.prompt}`,
-    expectedCitations: item.expectedCitations ?? ["[1]"],
-    evidence: [{ title: `${item.name} evidence` }],
-    toolResults: [{ toolKey: item.tags.includes("rag") ? "rag.search" : "stock.briefItems", ok: true, latencyMs: 20 + index }],
-    ragHits: item.tags.includes("rag") ? [{ chunkId: `chunk-${index}`, documentId: `doc-${index}`, score: 0.8 }] : [],
-    latencyMs: 500 + index * 10,
-    costCents: 0,
-  })
-);
+try {
+  const { runRealEval } = await import("@/eval/runner");
+  const report = await runRealEval({
+    mode,
+    onCaseStart(evalCase) {
+      console.log(`[eval] start ${evalCase.id} ${evalCase.name}`);
+    },
+    onCaseResult(result) {
+      console.log(`[eval] done ${result.caseId} run=${result.runId} status=${result.finalStatus} pass=${result.passed}`);
+    },
+  });
+  console.log(
+    `Real eval complete: ${report.summary.passed}/${report.summary.total} passed, terminal_rate ${report.summary.terminal_rate}, completion_rate ${report.summary.completion_rate}`
+  );
+  console.log("Wrote eval-report.md and eval-report.json");
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}
 
-const report = buildEvalReport(results);
-writeFileSync("eval-report.md", report.markdown, "utf8");
-writeFileSync("eval-report.json", report.json, "utf8");
-
-const parsed = JSON.parse(report.json) as { summary: { total: number; passed: number; averageScore: number } };
-console.log(`Eval complete: ${parsed.summary.passed}/${parsed.summary.total} passed, average score ${parsed.summary.averageScore}`);
-console.log("Wrote eval-report.md and eval-report.json");
+function parseMode(argv: string[]): RealEvalMode {
+  if (argv.includes("--real")) return "real";
+  if (argv.includes("--stress")) return "stress";
+  return "smoke";
+}

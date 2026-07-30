@@ -8,6 +8,9 @@ import { loadDotEnv } from "@/lib/load-env";
 import { getAgentRunForExecution, PrismaAgentRunRepository } from "@/lib/repositories";
 
 loadDotEnv();
+if (!process.env.RAG_EMBEDDING_PROVIDER && !process.env.EMBEDDING_API_KEY) {
+  process.env.RAG_EMBEDDING_PROVIDER = "deterministic";
+}
 
 const redisUrl = process.env.REDIS_URL;
 

@@ -12,6 +12,7 @@ export type AgentJob = {
 
 export type AgentQueueClient = {
   enqueue(job: AgentJob): Promise<{ id: string }>;
+  close?(): Promise<void>;
 };
 
 export function createAgentQueue(redisUrl = process.env.REDIS_URL): AgentQueueClient {
@@ -32,6 +33,10 @@ export function createAgentQueue(redisUrl = process.env.REDIS_URL): AgentQueueCl
         removeOnFail: 200,
       });
       return { id: String(queued.id) };
+    },
+    async close() {
+      await queue.close();
+      connection.disconnect();
     },
   };
 }

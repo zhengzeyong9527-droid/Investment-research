@@ -1,6 +1,6 @@
 # Investoday Investment Research Agent
 
-这是一个面向 A 股投研场景的 Agent 工程作品。项目目标不是做一个普通聊天壳，而是把投研问答拆成可追踪的工程链路：会话、任务、图节点、工具调用、证据、模型调用、记忆、RAG 召回、输出验证和用户反馈都可落库查看。
+这是一个面向 A 股投研场景的 Agent 工程作品。项目目标不是做一个普通聊天壳，而是把投研问答拆成可追踪的工程链路：会话、任务、LangGraph 节点、工具调用、证据、模型调用、记忆、RAG 召回、输出验证和用户反馈都能落库查看。
 
 > 本项目仅用于信息整理、研究辅助和工程作品展示，不构成投资建议、交易建议、收益承诺或风险兜底。
 
@@ -11,7 +11,7 @@
 - 模型：DeepSeek / OpenAI-compatible Chat Completions。
 - 工具：今日投资数据工具 + 本地 Tool Registry + MCP 入口。
 - RAG：本地文档摄取、chunk、embedding、pgvector 字段、hybrid search、rerank 入口。
-- 评测：`pnpm eval` 内置 50 个投研 case，可输出 Markdown/JSON 报告。
+- 评测：`pnpm eval` 已改为真实 Agent 评测入口，会真实创建 AgentSession/AgentRun、入队、等待 Worker、读取 ToolCall/EvidenceRecord/ModelCall/Memory/RAG 结果后评分。
 - 安全：HTML artifact 加 CSP / `nosniff`，写接口支持 `APP_AUTH_TOKEN` 最小鉴权开关。
 
 ## 产品截图
@@ -49,7 +49,7 @@ Agent 研究报告正文：支持结构化结论、核心依据、主要风险�
 - 多轮对话：同一会话内继承标的、时间窗口、输出偏好和上下文约束。
 - 证据链：每次回答保留 ToolCall、EvidenceRecord、ModelCall、SkillRun 和 verification。
 - 本地 RAG：支持把自有文档摄取为 RagDocument/RagChunk，用于回答时召回。
-- 评测报告：`pnpm eval` 输出 50 个 case 的规则评测结果，便于回归和演示。
+- 真实评测：`pnpm eval` 通过真实运行链路验证完成率、工具成功率、证据覆盖、引用准确率、RAG recall、记忆、幻觉风险、延迟和成本。
 
 ## 总体架构
 
@@ -65,7 +65,7 @@ flowchart LR
   Graph --> Skills["Skill Registry"]
   Graph --> Model["DeepSeek / OpenAI-compatible LLM"]
   Graph --> DB["Postgres / Prisma"]
-  Graph --> Eval["Eval Runner"]
+  Graph --> Eval["Real Eval Runner"]
 ```
 
 ## Agent 执行图
@@ -120,7 +120,7 @@ Worker 统一执行 graph，并使用 `thread_id = sessionId` 作为 LangGraph c
 - 今日投资外部工具：负责实时行情、研报、新闻、行业、概念、个股等数据接口。
 - 本地 RAG：负责自有研报、公告、研究笔记等文档的摄取和召回。
 - Skill：负责投研方法论和输出模板，例如盘面播报、公司研究、研报解读、行业研究、成长分析、解套顾问。
-- Eval：用于验证完成率、工具成功率、证据覆盖、引用准确率、RAG recall、幻觉风险、延迟和成本。
+- Eval：用于验证真实 Agent 链路，不再用脚本构造假答案、假证据或假 RAG 命中。
 
 ## 快速启动
 
@@ -155,17 +155,56 @@ pnpm demo:start
 pnpm test
 pnpm build
 pnpm eval --smoke
-pnpm eval
+pnpm eval --real
+pnpm eval --stress
+pnpm eval:synthetic
 pnpm rag:ingest ./docs/sample-report.md
 pnpm demo:seed
 ```
 
-`pnpm eval` 会生成：
+`pnpm eval` 默认执行真实 smoke 评测，生成：
 
 ```text
 eval-report.md
 eval-report.json
 ```
+
+`pnpm eval --real` 执行完整 50 个真实 case。`pnpm eval --stress` 执行多会话并发、重复问题稳定性和隔离检查。旧的模拟评测已移动到 `pnpm eval:synthetic`，只用于规则评分函数自检，不能作为 Agent 稳定性证明。
+
+真实评测会失败而不是降级造假，如果缺少以下任一条件：
+
+- `DATABASE_URL` 指向可连接的 Postgres。
+- `REDIS_URL` 指向可连接的 Redis。
+- `pnpm worker:agent` 已启动并注册 BullMQ worker。
+- `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `LLM_API_KEY` 已配置。
+- 今日投资数据源和本地 RAG 可用。
+
+## 真实评测指标
+
+`eval-report.json` 会包含每个真实 run 的：
+
+- caseId / prompt / agentKey / sessionId / runId / finalStatus。
+- outputMarkdown。
+- toolCalls / evidenceRecords / modelCalls。
+- memoryHits / memoryWrites。
+- ragHits / evidenceGaps。
+- metrics / passed / failureReasons。
+
+主要指标：
+
+- `terminal_rate`：是否进入 completed / failed / interrupted 终态。
+- `completion_rate`：是否完成。
+- `tool_success_rate`：真实 ToolCall 成功率。
+- `evidence_coverage_rate`：是否有真实 EvidenceRecord。
+- `entity_match_rate`：证据和回答是否匹配当前股票、行业或主题。
+- `citation_precision` / `citation_recall`：回答中的关键实体、日期、数字是否被证据支持。
+- `rag_recall_at_k`：本地文档问题是否命中预期 chunk。
+- `memory_write_rate` / `memory_recall_rate`：长期记忆写入和召回是否发生。
+- `cross_session_leak_rate`：多会话是否串上下文。
+- `stale_date_rate`：是否出现不符合当前日期窗口的旧日期。
+- `hallucination_rate`：无证据事实、虚构研报、虚构机构、虚构数字风险。
+- `latency_p50_ms` / `latency_p95_ms`：端到端耗时。
+- `token_input` / `token_output` / `cost_cents`：成本指标。
 
 ## 环境变量
 
@@ -230,10 +269,11 @@ Artifact：
 - 查看过程里能看到 graph 节点、ToolCall、EvidenceRecord、ModelCall、memory hits、rag hits 和 verification。
 - 工具失败会进入 `evidenceGaps`，不会被当成“没有数据”静默吞掉。
 - HTML artifact 只通过链接打开，响应带 CSP 和 `nosniff`。
+- 真实 eval 的每个 case 必须有真实 `runId`、`ToolCall`、`ModelCall`，否则失败。
 
 ## 已知限制
 
 - 本地 RAG 第一版使用应用层 hybrid search + rerank，pgvector 字段已落库，后续可升级为数据库侧向量相似度查询。
-- Eval runner 当前以规则评测为主，LLM-as-judge 可作为后续增强。
+- Eval 评分当前以规则评测为主，LLM-as-judge 可作为后续增强。
 - 鉴权是最小 token 方案，不是完整租户、组织、RBAC 系统。
 - 项目依赖今日投资外部接口做实时投研数据，接口不可用时会记录 evidence gap。

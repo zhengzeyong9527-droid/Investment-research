@@ -512,4 +512,61 @@ describe("agent executor compliance behavior", () => {
       }),
     });
   });
+
+  it("completes unwind research when stock, loss, and position are present without risk confirmation", async () => {
+    const repository = createRepository();
+    const toolRegistry = createToolRegistry();
+    vi.mocked(toolRegistry.call).mockImplementation(async (toolKey, input) => ({
+      toolCallId: `tool-${toolKey}`,
+      data:
+        toolKey === "entity.recognition" && String(input.query) === "永兴材料"
+          ? { code: "002756", name: "永兴材料", type: "stock", correlation: 1 }
+          : toolKey === "entity.recognition" && String(input.query).includes("碳酸锂")
+            ? {
+                entities: [
+                  { code: "240603", name: "锂", type: "industry", correlation: 1, level: 3 },
+                  { code: "14050010", name: "锂概念", type: "concept", correlation: 0.8, level: 0 },
+                ],
+              }
+            : toolKey === "memory.search"
+              ? []
+              : toolKey === "stock.basicInfo"
+                ? { code: "002756", name: "永兴材料" }
+                : toolKey === "stock.unwindSignalStat"
+                  ? [{ stockCode: "002756", winRate3m: 0.6 }]
+                  : toolKey === "stock.unwindSignalDetails"
+                    ? [{ stockCode: "002756", signalName: "回撤修复", summary: "解套信号证据" }]
+                    : toolKey === "concept.quote"
+                      ? [{ conceptCode: "14050010", conceptName: "锂概念", changeRatio: 0.02 }]
+                      : toolKey === "industry.data"
+                        ? { target: { code: "240603", name: "锂" }, reports: [{ title: "锂行业研报", summary: "锂产业链证据" }] }
+                        : [],
+    }));
+
+    await executeAgentRunJob({
+      run: {
+        id: "run-unwind-complete-no-confirm",
+        agentKey: "research-router-agent",
+        sessionId: "session-unwind-complete",
+        question: "我的永兴材料被套40%，仓位三成，请问还有解套空间吗？短期碳酸锂会涨吗？",
+        skillKey: "investoday-stock-research-interpretation",
+        inputPayload: { abilityKey: "auto" },
+      },
+      repository,
+      toolRegistry,
+      modelProvider: new StaticModelProvider("研究复盘版解套分析"),
+    });
+
+    expect(toolRegistry.call).toHaveBeenCalledWith("stock.unwindSignalStat", expect.objectContaining({ stockCode: "002756" }), expect.anything());
+    expect(toolRegistry.call).toHaveBeenCalledWith("stock.unwindSignalDetails", expect.objectContaining({ stockCode: "002756" }), expect.anything());
+    expect(finalRunUpdate(repository)).toMatchObject({
+      status: "completed",
+      skillKey: "investoday-ai-unwind-advisor",
+      outputMarkdown: expect.stringContaining("研究复盘版解套分析"),
+      outputJson: expect.objectContaining({
+        unwindEvidenceReady: true,
+        riskBoundaryNotice: expect.stringContaining("不构成交易指令"),
+      }),
+    });
+  });
 });

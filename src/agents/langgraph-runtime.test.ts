@@ -49,6 +49,117 @@ describe("langgraph runtime", () => {
       }),
     });
   });
+
+  it("preserves prototype repository methods when graph state wrapping is enabled", async () => {
+    const repository = new PrototypeRepository();
+    const run: ExecutableAgentRun = {
+      id: "run-graph-prototype",
+      agentKey: "research-router-agent",
+      sessionId: "session-graph",
+      question: "研究贵州茅台近30天风险",
+      skillKey: "investoday-stock-research-interpretation",
+      inputPayload: { stockCodeOrName: "600519" },
+      graphState: { nodeKeys: [], ragHits: [], evidenceGaps: [] },
+    };
+
+    await executeAgentGraphJob({
+      run,
+      repository,
+      toolRegistry: createToolRegistry(),
+      modelProvider: new StaticModelProvider("graph answer"),
+    });
+
+    expect(repository.steps.map((step) => step.nodeKey)).toContain("local_rag_retrieve");
+    expect(repository.updates.at(-1)).toMatchObject({
+      status: "completed",
+      outputJson: expect.objectContaining({
+        graphState: expect.objectContaining({
+          nodeKeys: expect.arrayContaining(["resolve_entity", "persist"]),
+        }),
+      }),
+    });
+  });
+
+  it("persists successful local RAG hits into graph state", async () => {
+    const repository = createRepository();
+    const run: ExecutableAgentRun = {
+      id: "run-graph-rag",
+      agentKey: "research-router-agent",
+      sessionId: "session-graph-rag",
+      question: "引用本地文档回答贵州茅台渠道风险",
+      skillKey: "investoday-stock-research-interpretation",
+      inputPayload: { stockCodeOrName: "600519" },
+    };
+
+    await executeAgentGraphJob({
+      run,
+      repository,
+      toolRegistry: createToolRegistry(),
+      modelProvider: new StaticModelProvider("graph answer"),
+    });
+
+    expect(finalRunUpdate(repository)).toMatchObject({
+      outputJson: expect.objectContaining({
+        graphState: expect.objectContaining({
+          ragHits: expect.arrayContaining([
+            expect.objectContaining({ title: "茅台风险", content: "批价风险" }),
+          ]),
+          toolResults: expect.arrayContaining([expect.objectContaining({ toolKey: "rag.search", ok: true })]),
+        }),
+      }),
+    });
+  });
+
+  it("persists local RAG hits before generation so model failures remain diagnosable", async () => {
+    const repository = createRepository();
+    const run: ExecutableAgentRun = {
+      id: "run-graph-rag-failed-model",
+      agentKey: "research-router-agent",
+      sessionId: "session-graph-rag-failed-model",
+      question: "引用本地文档回答贵州茅台渠道风险",
+      skillKey: "investoday-stock-research-interpretation",
+      inputPayload: { stockCodeOrName: "600519" },
+    };
+    const failingModelProvider = {
+      configured: true,
+      model: "failing-model",
+      chatMarkdown: vi.fn(async () => {
+        throw new Error("model down");
+      }),
+      streamMarkdown: vi.fn(async () => {
+        throw new Error("model down");
+      }),
+      chatJson: vi.fn(async () => {
+        throw new Error("model down");
+      }),
+    };
+
+    await expect(
+      executeAgentGraphJob({
+        run,
+        repository,
+        toolRegistry: createToolRegistry(),
+        modelProvider: failingModelProvider,
+      })
+    ).rejects.toThrow("model down");
+
+    expect(vi.mocked(repository.updateAgentRun)).toHaveBeenCalledWith(
+      run.id,
+      expect.objectContaining({
+        outputJson: expect.objectContaining({
+          ragHits: expect.arrayContaining([
+            expect.objectContaining({ title: "茅台风险", content: "批价风险" }),
+          ]),
+          graphState: expect.objectContaining({
+            ragHits: expect.arrayContaining([
+              expect.objectContaining({ title: "茅台风险", content: "批价风险" }),
+            ]),
+          }),
+        }),
+      })
+    );
+    expect(finalRunUpdate(repository)).toMatchObject({ status: "failed" });
+  });
 });
 
 function createRepository(): AgentRuntimeRepository {
@@ -97,4 +208,55 @@ function createToolRegistry(): ToolRegistry {
 function finalRunUpdate(repository: AgentRuntimeRepository) {
   const calls = vi.mocked(repository.updateAgentRun).mock.calls;
   return calls.at(-1)?.[1];
+}
+
+class PrototypeRepository implements AgentRuntimeRepository {
+  updates: Array<Record<string, unknown>> = [];
+  steps: Array<{ nodeKey: string }> = [];
+
+  async updateAgentRun(_id: string, data: Record<string, unknown>) {
+    this.updates.push(data);
+    return {};
+  }
+
+  async appendAgentStep(data: { nodeKey: string } & Record<string, unknown>) {
+    this.steps.push({ nodeKey: data.nodeKey });
+    return { id: `step-${this.steps.length}` };
+  }
+
+  async listRecentAgentMessages() {
+    return [];
+  }
+
+  async listRecentAgentRunInputs() {
+    return [];
+  }
+
+  async appendAgentMessage() {
+    return { id: "message-1" };
+  }
+
+  async createSkillRun() {
+    return { id: "skill-run-1" };
+  }
+
+  async updateSkillRun() {
+    return {};
+  }
+
+  async recordToolCall() {
+    return { id: "tool-call-1" };
+  }
+
+  async recordModelCall() {
+    return { id: "model-call-1" };
+  }
+
+  async writeEvidence() {
+    return {};
+  }
+
+  async writeMemoryItem() {
+    return {};
+  }
 }
