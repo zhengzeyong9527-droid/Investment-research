@@ -3,9 +3,12 @@ import { createAgentQueue } from "@/agents/queue";
 import { createAgentRunTask } from "@/agents/runs";
 import { isAgentKey } from "@/agents/registry";
 import { agentApiErrorResponse } from "@/lib/agent-api-errors";
+import { withApiSecurity } from "@/lib/api-security";
 import { PrismaAgentRunRepository } from "@/lib/repositories";
 
 export async function POST(request: Request, { params }: { params: Promise<{ agentKey: string }> }) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     const { agentKey } = await params;
     if (!isAgentKey(agentKey)) {

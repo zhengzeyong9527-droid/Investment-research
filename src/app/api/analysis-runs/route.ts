@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { createAnalysisPlaceholder } from "@/lib/analysis";
+import { agentApiErrorResponse } from "@/lib/agent-api-errors";
+import { withApiSecurity } from "@/lib/api-security";
 import { ensureDefaultSkills } from "@/lib/skills";
 import { PrismaAnalysisRepository } from "@/lib/repositories";
 
 export async function POST(request: Request) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     await ensureDefaultSkills();
     const body = await request.json();
@@ -17,9 +21,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(run, { status: 201 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "分析占位记录创建失败" },
-      { status: 400 }
-    );
+    return agentApiErrorResponse(error, "分析占位记录创建失败", 400);
   }
 }

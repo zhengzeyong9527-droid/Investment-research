@@ -49,20 +49,22 @@ function interruptFromRun(run: { outputJson?: unknown }) {
 }
 
 function isNewTaskMessage(text: string) {
-  return /^(重新|新建|换个|研究|分析).*(行业|板块|股票|公司|主题)/.test(text) ||
-    /^(閲嶆柊|鏂板缓|鎹釜|鐮旂┒|鍒嗘瀽).*(琛屼笟|鏉垮潡|鑲＄エ|鍏徃|涓婚)/.test(text);
+  return (
+    /^(重新|新建|换个|研究|分析).*(行业|板块|股票|公司|主题)/.test(text) ||
+    /^(不要继续|另起|重新开始).*(这个|上一轮|上一个|问题|任务)/.test(text)
+  );
 }
 
 function isConfirmMessage(text: string) {
-  return /^(确认|同意|继续|可以|yes|ok)$/i.test(text) || /^(纭|鍚屾剰|缁х画|鍙互)$/i.test(text);
+  return /^(确认|同意|继续|可以|yes|ok)$/i.test(text) || /^(确认继续|继续分析|好的)$/i.test(text);
 }
 
 function hasPositionField(text: string) {
   return /(仓位|持仓|满仓|半仓|[一二三四五六七八九]成|\d{1,3}%)/.test(text) ||
-    /(浠撲綅|鎸佷粨|婊′粨|鍗婁粨|[涓€浜屼笁鍥涗簲鍏竷鍏節]鎴恷\d{1,3}%)/.test(text);
+    /(仓位比例|持仓比例|仓位大约|持有比例)/.test(text);
 }
 
 function hasLossField(text: string) {
   return /(被套|亏损|浮亏|套了|亏了|\d{1,3}%)/.test(text) ||
-    /(琚|浜忔崯|娴簭|濂椾簡|浜忎簡|\d{1,3}%)/.test(text);
+    /(亏损幅度|被套幅度|浮亏比例)/.test(text);
 }

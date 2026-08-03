@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { agentApiErrorResponse } from "@/lib/agent-api-errors";
+import { withApiSecurity } from "@/lib/api-security";
 import { deleteAgentMemory, updateAgentMemory } from "@/lib/repositories";
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
@@ -17,7 +20,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     const { id } = await params;
     return NextResponse.json(await deleteAgentMemory(id));

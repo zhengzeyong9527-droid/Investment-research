@@ -1,4 +1,5 @@
 import { createAgentApiError } from "@/lib/agent-api-errors";
+import { withApiSecurity } from "@/lib/api-security";
 import { getAgentRun } from "@/lib/repositories";
 
 const TERMINAL = new Set(["completed", "failed", "interrupted"]);
@@ -6,6 +7,8 @@ const TERMINAL = new Set(["completed", "failed", "interrupted"]);
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   const { id } = await params;
   const encoder = new TextEncoder();
   let lastPayload = "";

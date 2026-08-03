@@ -1,4 +1,4 @@
-import { trace } from "@opentelemetry/api";
+﻿import { trace } from "@opentelemetry/api";
 import { normalizeInputForSkill, type EvidenceRecordInput, type JsonRecord } from "@/lib/agent";
 import { findStockAliasInText } from "@/lib/stock-aliases";
 import { createToolRegistry } from "@/tools/registry";
@@ -83,6 +83,8 @@ export async function executeAgentRunJob(input: {
   toolRegistry?: ToolRegistry;
   modelProvider?: ModelProvider;
 }) {
+  // Legacy orchestration path kept for focused compatibility tests. Worker/API
+  // execution should go through executeAgentGraphJob in langgraph-runtime.ts.
   const repository = input.run.graphState ? withGraphStateRepository(input.repository, input.run.graphState) : input.repository;
   const toolRegistry = input.toolRegistry ?? createToolRegistry();
   const modelProvider = input.modelProvider ?? new OpenAIModelProvider();
@@ -145,6 +147,7 @@ async function runMarketBroadcast(
   toolRegistry: ToolRegistry,
   modelProvider: ModelProvider
 ) {
+  // Legacy orchestration helper; do not add new runtime behavior here.
   const context = toolContext(run, repository, "market-broadcast-agent");
   const memoryHits = await retrieveMemory(run, toolRegistry, context);
   await step(repository, run.id, 2, "load_market_overview", "running", "Fetching market overview.");
@@ -189,6 +192,7 @@ async function runResearchRouter(
   toolRegistry: ToolRegistry,
   modelProvider: ModelProvider
 ) {
+  // Legacy orchestration helper; do not add new runtime behavior here.
   const context = toolContext(run, repository, "research-router-agent");
   const resolved = await buildResolvedResearchInput(run, repository, toolRegistry, context);
   const intentPlan = planMultiIntent({
@@ -296,13 +300,14 @@ async function runResearchRouter(
   return { ...skillResult, outputMarkdown: finalMarkdown };
 }
 
-async function runAndPersistSkill(input: {
+export async function runAndPersistSkill(input: {
   run: ExecutableAgentRun;
   repository: AgentRuntimeRepository;
   modelProvider: ModelProvider;
   skillKey: string;
   evidence: EvidenceRecordInput[];
   memory: unknown[];
+  stepNodeKey?: string;
 }) {
   const conversationHistory = input.run.sessionId
     ? await input.repository.listRecentAgentMessages?.(input.run.sessionId, 12)
@@ -354,7 +359,7 @@ async function runAndPersistSkill(input: {
     error: null,
   });
   await flushPartial(outputMarkdown, true);
-  await step(input.repository, input.run.id, 3, "run_skill", "completed", `Skill ${input.skillKey} completed.`);
+  await step(input.repository, input.run.id, 3, input.stepNodeKey ?? "run_skill", "completed", `Skill ${input.skillKey} completed.`);
   return {
     ...result,
     outputMarkdown,
@@ -370,7 +375,7 @@ function forcedSkillKey(run: ExecutableAgentRun) {
   return typeof abilityKey === "string" && abilityKey && abilityKey !== "auto" ? abilityKey : undefined;
 }
 
-async function buildResolvedResearchInput(
+export async function buildResolvedResearchInput(
   run: ExecutableAgentRun,
   repository: AgentRuntimeRepository,
   toolRegistry: ToolRegistry,
@@ -419,7 +424,7 @@ function applyResolvedEntitiesToInput(input: JsonRecord, entities: ResolvedAgent
   };
 }
 
-async function normalizeResearchInput(
+export async function normalizeResearchInput(
   skillKey: string,
   run: ExecutableAgentRun,
   repository: AgentRuntimeRepository,
@@ -465,7 +470,7 @@ async function normalizeResearchInput(
   };
 }
 
-async function fetchEvidenceForSkill(
+export async function fetchEvidenceForSkill(
   skillKey: string,
   input: JsonRecord,
   toolRegistry: ToolRegistry,
@@ -655,7 +660,7 @@ function stockQueryFromText(text: string) {
 }
 
 function industryQueryFromText(text: string) {
-  const direct = text.match(/(?:研究|分析|看看|看一下)?\s*([\u4e00-\u9fa5A-Za-z0-9]{2,20})(?:行业|板块|赛道|主题)/)?.[1];
+  const direct = text.match(/(?:研究|分析|看看|看一下)\s*([\u4e00-\u9fa5A-Za-z0-9]{2,20})(?:行业|板块|赛道|主题)/)?.[1];
   if (direct) return direct.endsWith("行业") ? direct.slice(0, -2) : direct;
   for (const keyword of ["有色金属", "白酒", "半导体", "医药", "新能源", "银行", "券商", "计算机", "传媒", "军工", "煤炭", "钢铁", "化工"]) {
     if (text.includes(keyword)) return keyword;
@@ -665,7 +670,7 @@ function industryQueryFromText(text: string) {
 
 function extractTimeWindowDays(text: string) {
   const slashValue = text.match(/\/\s*(\d{1,3})\b/)?.[1];
-  const dayValue = text.match(/(?:近|最近|过去)?\s*(\d{1,3})\s*(?:天|日|days?)/i)?.[1];
+  const dayValue = text.match(/(?:最近|过去)?\s*(\d{1,3})\s*(?:天|日|days?)/i)?.[1];
   const value = Number(slashValue ?? dayValue);
   return Number.isFinite(value) && value > 0 ? value : undefined;
 }
@@ -681,7 +686,7 @@ function isIndustryResearchSkill(skillKey: string) {
   return skillKey.includes("industry");
 }
 
-async function retrieveMemory(run: ExecutableAgentRun, toolRegistry: ToolRegistry, context: ReturnType<typeof toolContext>): Promise<MemoryHit[]> {
+export async function retrieveMemory(run: ExecutableAgentRun, toolRegistry: ToolRegistry, context: ReturnType<typeof toolContext>): Promise<MemoryHit[]> {
   try {
     const result = await toolRegistry.call<MemoryHit[]>(
       "memory.search",
@@ -699,7 +704,7 @@ async function retrieveMemory(run: ExecutableAgentRun, toolRegistry: ToolRegistr
   }
 }
 
-async function commitMemory(
+export async function commitMemory(
   repository: AgentRuntimeRepository,
   run: ExecutableAgentRun,
   skillKey: string,
@@ -724,7 +729,7 @@ async function commitMemory(
   }
 }
 
-function augmentOutputJson(
+export function augmentOutputJson(
   outputJson: Record<string, unknown> | null | undefined,
   memoryHits: MemoryHit[],
   evidenceGrade: EvidenceGrade,
@@ -748,19 +753,19 @@ function augmentOutputJson(
   };
 }
 
-function unwindRiskBoundaryOutput(evidenceReady: boolean) {
+export function unwindRiskBoundaryOutput(evidenceReady: boolean) {
   return {
     unwindEvidenceReady: evidenceReady,
     riskBoundaryNotice: "本回答仅做研究复盘和风险梳理，不构成交易指令；如需执行买卖操作，请自行决策并承担风险。",
   };
 }
 
-function appendRiskBoundaryNotice(markdown: string) {
+export function appendRiskBoundaryNotice(markdown: string) {
   const notice = unwindRiskBoundaryOutput(true).riskBoundaryNotice;
   return markdown.includes(notice) ? markdown : `${markdown.trim()}\n\n> ${notice}`;
 }
 
-function buildEvidenceGroups(evidence: EvidenceRecordInput[]) {
+export function buildEvidenceGroups(evidence: EvidenceRecordInput[]) {
   const groups = new Map<string, { groupKey: string; count: number; titles: string[] }>();
   for (const item of evidence) {
     const groupKey = evidenceGroupKey(item);
@@ -783,7 +788,7 @@ function evidenceGroupKey(item: EvidenceRecordInput) {
   return item.kind;
 }
 
-async function appendAssistantMessage(repository: AgentRuntimeRepository, run: ExecutableAgentRun, content: string) {
+export async function appendAssistantMessage(repository: AgentRuntimeRepository, run: ExecutableAgentRun, content: string) {
   if (!run.sessionId || !repository.appendAgentMessage) return;
   await repository.appendAgentMessage({
     sessionId: run.sessionId,
@@ -793,7 +798,7 @@ async function appendAssistantMessage(repository: AgentRuntimeRepository, run: E
   });
 }
 
-function toolContext(run: ExecutableAgentRun, repository: AgentRuntimeRepository, agentKey: AgentKey) {
+export function toolContext(run: ExecutableAgentRun, repository: AgentRuntimeRepository, agentKey: AgentKey) {
   return {
     agentRunId: run.id,
     sessionId: run.sessionId ?? run.id,
@@ -814,7 +819,7 @@ async function step(
   return repository.appendAgentStep({ agentRunId, nodeKey, order, title: nodeKey, status, message });
 }
 
-function marketEvidence(overview: unknown, breadth: unknown, indexQuotes: unknown, news: unknown): EvidenceRecordInput[] {
+export function marketEvidence(overview: unknown, breadth: unknown, indexQuotes: unknown, news: unknown): EvidenceRecordInput[] {
   return [
     evidence("market", "Market overview", "Investoday", "market.overview", overview),
     evidence("market", "Market breadth", "Investoday", "market/change-ratio-status", breadth),
@@ -947,7 +952,7 @@ function extractStockCode(text: string) {
   return text.match(/\b\d{6}\b/)?.[0];
 }
 
-function defaultNewsWindow() {
+export function defaultNewsWindow() {
   const end = new Date();
   const begin = new Date(end.getTime() - 24 * 60 * 60 * 1000);
   return {
@@ -958,7 +963,7 @@ function defaultNewsWindow() {
   };
 }
 
-function missingRequiredInputs(skillKey: string, input: JsonRecord) {
+export function missingRequiredInputs(skillKey: string, input: JsonRecord) {
   if (isStockResearchSkill(skillKey) && !stringValue(input.stockCodeOrName)) {
     return ["stockCodeOrName"];
   }
@@ -969,12 +974,12 @@ function missingRequiredInputs(skillKey: string, input: JsonRecord) {
   return ["stockCode", "lossPercent", "positionPercent"].filter((key) => input[key] === undefined || input[key] === null || String(input[key]).trim() === "");
 }
 
-function missingInputPrompt(missingInputs: string[]) {
+export function missingInputPrompt(missingInputs: string[]) {
   const labels: Record<string, string> = {
     stockCodeOrName: "股票代码或公司名称",
     stockCode: "股票代码或公司名称",
     lossPercent: "被套/亏损幅度，例如 40%",
-    positionPercent: "仓位比例，例如 三成、半仓、30%",
+    positionPercent: "仓位比例，例如三成、半仓、50%",
     industryName: "行业名称",
   };
   return `我还需要你补充：${missingInputs.map((item) => labels[item] ?? item).join("、")}。补充后我会继续上一轮分析。`;

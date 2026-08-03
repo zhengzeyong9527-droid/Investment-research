@@ -12,7 +12,7 @@ model WatchTarget {
   type       TargetType
   code       String
   name       String
-  tags       String        @default("[]")
+  tags       Json          @default("[]")
   reason     String        @default("")
   enabled    Boolean       @default(true)
   createdAt  DateTime      @default(now())
@@ -95,9 +95,9 @@ model AgentRun {
   skillKey       String
   triggerType    String         @default("manual")
   status         AgentRunStatus @default(created)
-  inputPayload   String         @default("{}")
+  inputPayload   Json           @default("{}")
   promptPackage  String         @default("")
-  outputJson     String         @default("{}")
+  outputJson     Json           @default("{}")
   outputMarkdown String?
   model          String         @default("")
   tokenInput     Int            @default(0)
@@ -118,6 +118,9 @@ model AgentRun {
   modelCalls     ModelCall[]
   feedback       UserFeedback[]
   evalResults    AgentEvalResult[]
+
+  @@index([sessionId, status, updatedAt])
+  @@index([status, updatedAt])
 }
 
 model AgentSession {
@@ -164,7 +167,7 @@ model SkillRun {
   skillKey       String
   skillPath      String
   status         SkillRunStatus @default(pending)
-  inputPayload   String         @default("{}")
+  inputPayload   Json           @default("{}")
   promptPackage  String         @default("")
   outputMarkdown String?
   outputHtml     String?
@@ -187,20 +190,22 @@ model EvidenceRecord {
   publishedAt    DateTime?
   summary        String       @default("")
   sourceEndpoint String       @default("")
-  rawPayload     String       @default("{}")
+  rawPayload     Json         @default("{}")
   embedding       Unsupported("vector")?
   fetchedAt      DateTime     @default(now())
   agentRun       AgentRun     @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
   skillRun       SkillRun?    @relation(fields: [skillRunId], references: [id], onDelete: SetNull)
   toolCall       ToolCall?    @relation(fields: [toolCallId], references: [id], onDelete: SetNull)
   artifact       ResearchArtifact? @relation(fields: [artifactId], references: [id], onDelete: SetNull)
+
+  @@index([agentRunId, kind, source])
 }
 
 model ToolCall {
   id             String       @id @default(cuid())
   agentRunId     String
   toolKey        String
-  inputJson      String       @default("{}")
+  inputJson      Json         @default("{}")
   outputSummary  String       @default("")
   rawPayloadRef  String?
   status         String
@@ -210,6 +215,8 @@ model ToolCall {
   createdAt      DateTime     @default(now())
   agentRun       AgentRun     @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
   evidence       EvidenceRecord[]
+
+  @@index([agentRunId, toolKey, status])
 }
 
 model ModelCall {
@@ -226,6 +233,8 @@ model ModelCall {
   error       String?
   createdAt   DateTime @default(now())
   agentRun    AgentRun @relation(fields: [agentRunId], references: [id], onDelete: Cascade)
+
+  @@index([agentRunId, status])
 }
 
 model MemoryItem {
@@ -264,44 +273,64 @@ model ResearchArtifact {
 }
 
 model RagDocument {
-  id          String     @id
-  title       String
-  content     String
-  source      String     @default("local")
-  publishedAt DateTime?
-  metadata    String     @default("{}")
-  chunkCount  Int        @default(0)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  chunks      RagChunk[]
+  id             String     @id
+  title          String
+  content        String
+  source         String     @default("local")
+  sourceUrl      String?
+  publishedAt    DateTime?
+  licenseStatus  String     @default("internal")
+  licenseSource  String     @default("")
+  validFrom      DateTime?
+  validUntil     DateTime?
+  removedAt      DateTime?
+  removalReason  String?
+  metadata       Json       @default("{}")
+  chunkCount     Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  chunks         RagChunk[]
 
   @@index([source])
+  @@index([licenseStatus])
   @@index([publishedAt])
+  @@index([removedAt])
+  @@index([validUntil])
 }
 
 model RagChunk {
-  id            String       @id
-  documentId    String
-  title         String
-  content       String
-  source        String       @default("local")
-  chunkIndex    Int
-  metadata      String       @default("{}")
-  embedding     Unsupported("vector")?
-  embeddingJson String       @default("[]")
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  document      RagDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id             String       @id
+  documentId     String
+  title          String
+  content        String
+  source         String       @default("local")
+  sourceUrl      String?
+  chunkIndex     Int
+  licenseStatus  String       @default("internal")
+  licenseSource  String       @default("")
+  publishedAt    DateTime?
+  validFrom      DateTime?
+  validUntil     DateTime?
+  removedAt      DateTime?
+  metadata       Json         @default("{}")
+  embedding      Unsupported("vector")?
+  embeddingJson  String       @default("[]")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  document       RagDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([documentId])
   @@index([source])
+  @@index([licenseStatus])
+  @@index([removedAt])
+  @@index([validUntil])
 }
 
 model AgentEvalCase {
   id               String            @id @default(cuid())
   agentKey         String
   caseName         String
-  inputJson        String            @default("{}")
+  inputJson        Json              @default("{}")
   expectedCriteria String            @default("")
   createdAt        DateTime          @default(now())
   results          AgentEvalResult[]
@@ -324,7 +353,7 @@ model UserFeedback {
   runId     String
   rating    Int
   comment   String   @default("")
-  tags      String   @default("[]")
+  tags      Json     @default("[]")
   createdAt DateTime @default(now())
   run       AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 }

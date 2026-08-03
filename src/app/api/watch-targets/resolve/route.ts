@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { InvestodayDataAdapter } from "@/lib/investoday";
+import { agentApiErrorResponse } from "@/lib/agent-api-errors";
+import { withApiSecurity } from "@/lib/api-security";
 
 export async function POST(request: Request) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     const body = await request.json();
     const adapter = new InvestodayDataAdapter();
@@ -12,9 +16,6 @@ export async function POST(request: Request) {
         : await adapter.resolveStock({ code: body.code, name: body.name });
     return NextResponse.json(resolved);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "股票代码解析失败" },
-      { status: 400 }
-    );
+    return agentApiErrorResponse(error, "股票代码解析失败", 400);
   }
 }

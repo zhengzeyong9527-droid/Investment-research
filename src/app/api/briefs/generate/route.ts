@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { agentApiErrorResponse } from "@/lib/agent-api-errors";
+import { withApiSecurity } from "@/lib/api-security";
 import { generateDailyBrief } from "@/lib/briefs";
 import { shanghaiDateString } from "@/lib/date";
 import { InvestodayDataAdapter } from "@/lib/investoday";
 import { PrismaDailyBriefRepository } from "@/lib/repositories";
 
 export async function POST(request: Request) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     const body = await request.json().catch(() => ({}));
     const now = new Date();
@@ -17,9 +21,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(brief);
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "自选速览生成失败" },
-      { status: 500 }
-    );
+    return agentApiErrorResponse(error, "自选速览生成失败", 500);
   }
 }

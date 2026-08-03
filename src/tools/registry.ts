@@ -315,7 +315,12 @@ async function executeTool(toolKey: string, input: Record<string, unknown>, run:
       title,
       content,
       source: stringOrUndefined(input.source) ?? "local-upload",
+      sourceUrl: stringOrUndefined(input.sourceUrl) ?? null,
       publishedAt: stringOrUndefined(input.publishedAt) ?? null,
+      licenseStatus: licenseStatusOrDefault(input.licenseStatus),
+      licenseSource: stringOrUndefined(input.licenseSource) ?? stringOrUndefined(input.source) ?? "local-upload",
+      validFrom: stringOrUndefined(input.validFrom) ?? null,
+      validUntil: stringOrUndefined(input.validUntil) ?? null,
       metadata: recordMetadata(input.metadata),
     });
   }
@@ -326,6 +331,7 @@ async function executeTool(toolKey: string, input: Record<string, unknown>, run:
       query,
       topK: numberOrUndefined(input.topK) ?? numberOrUndefined(input.limit) ?? 8,
       filters: recordMetadata(input.filters),
+      includeRemoved: input.includeRemoved === true,
     });
   }
   if (toolKey === "rag.rerank") {
@@ -495,6 +501,10 @@ function stringOrUndefined(value: unknown) {
 function numberOrUndefined(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
+}
+
+function licenseStatusOrDefault(value: unknown) {
+  return value === "authorized" || value === "internal" || value === "public" ? value : "internal";
 }
 
 function recordMetadata(value: unknown) {

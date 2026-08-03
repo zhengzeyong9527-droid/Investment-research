@@ -8,6 +8,7 @@ export type AgentJob = {
   runId: string;
   agentKey: AgentKey;
   sessionId: string;
+  resumePayload?: Record<string, unknown>;
 };
 
 export type AgentQueueClient = {
@@ -15,8 +16,22 @@ export type AgentQueueClient = {
   close?(): Promise<void>;
 };
 
-export function createAgentQueue(redisUrl = process.env.REDIS_URL): AgentQueueClient {
+export class AgentQueueUnavailableError extends Error {
+  constructor(message = "AGENT_QUEUE_UNAVAILABLE: REDIS_URL is required unless AGENT_MOCK_MODE=1.") {
+    super(message);
+    this.name = "AgentQueueUnavailableError";
+  }
+}
+
+type AgentQueueEnv = {
+  AGENT_MOCK_MODE?: string;
+};
+
+export function createAgentQueue(redisUrl = process.env.REDIS_URL, env: AgentQueueEnv = process.env as AgentQueueEnv): AgentQueueClient {
   if (!redisUrl) {
+    if (env.AGENT_MOCK_MODE !== "1") {
+      throw new AgentQueueUnavailableError();
+    }
     return {
       async enqueue(job) {
         return { id: `local-no-redis-${job.runId}` };

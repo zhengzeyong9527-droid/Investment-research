@@ -70,15 +70,17 @@ export async function normalizeWatchTargetForSave(
   };
 }
 
-export function serializeTags(tags: string[]): string {
-  return JSON.stringify(tags);
+export function serializeTags(tags: string[]): string[] {
+  return tags;
 }
 
-export function deserializeTags(tags: string | null | undefined): string[] {
+export function deserializeTags(tags: unknown): string[] {
   if (!tags) return [];
+  if (Array.isArray(tags)) return tags.filter((item): item is string => typeof item === "string");
+  if (typeof tags !== "string") return [];
   try {
     const parsed = JSON.parse(tags);
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
   } catch {
     return normalizeTags(tags);
   }
@@ -136,7 +138,7 @@ function uniqueTags(tags: string[]) {
 
 function mergeReason(first: string, second: string) {
   const parts = Array.from(new Set([first.trim(), second.trim()].filter(Boolean)));
-  return parts.join("；");
+  return parts.join("，");
 }
 
 function stockLookupFrom(code: string, name: string) {

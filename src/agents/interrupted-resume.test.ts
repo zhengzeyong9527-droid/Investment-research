@@ -23,6 +23,7 @@ describe("interrupted run resume helpers", () => {
     expect(buildResumePayloadFromMessage("永兴材料")).toMatchObject({ stockCodeOrName: "永兴材料" });
     expect(buildResumePayloadFromMessage("002756")).toMatchObject({ stockCode: "002756", stockCodeOrName: "002756" });
     expect(buildResumePayloadFromMessage("仓位三成")).toMatchObject({ positionPercent: 30 });
+    expect(buildResumePayloadFromMessage("被套40%")).toMatchObject({ lossPercent: 40 });
     expect(buildResumePayloadFromMessage("确认")).toMatchObject({ riskConfirmed: true });
   });
 

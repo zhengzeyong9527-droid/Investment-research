@@ -159,7 +159,12 @@ export type RealEvalCaseResult = {
   metrics: RealEvalMetrics;
   passed: boolean;
   failureReasons: string[];
+  failureCategory: RealEvalFailureCategory;
+  failureStage: RealEvalFailureStage;
 };
+
+export type RealEvalFailureCategory = "none" | "infra" | "model" | "tool" | "runtime" | "quality";
+export type RealEvalFailureStage = "completed" | "environment" | "tooling" | "model_generation" | "runtime" | "quality";
 
 export type RealEvalReport = {
   markdown: string;
@@ -322,8 +327,11 @@ export function scoreRealRunDetail(input: {
   const expected = turn.expected ?? {};
   const outputMarkdown = input.runDetail.outputMarkdown?.trim() ?? "";
   const outputJson = input.runDetail.outputJson ?? {};
+  const graphState = objectValue(outputJson.graphState) ?? {};
+  const verification = objectValue(graphState.verification) ?? objectValue(outputJson.verification) ?? {};
+  const claimVerification = objectValue(verification.claimVerification);
   const memoryHits = arrayValue(outputJson.memoryHits);
-  const ragHits = normalizeRagHits(arrayValue(outputJson.ragHits).length > 0 ? arrayValue(outputJson.ragHits) : arrayValue(objectValue(outputJson.graphState)?.ragHits));
+  const ragHits = normalizeRagHits(arrayValue(outputJson.ragHits).length > 0 ? arrayValue(outputJson.ragHits) : arrayValue(graphState.ragHits));
   const evidenceGaps = arrayValue(outputJson.evidenceGaps);
   const terminal = TERMINAL_STATUSES.has(input.runDetail.status);
   const completed = input.runDetail.status === "completed";
@@ -332,6 +340,8 @@ export function scoreRealRunDetail(input: {
   const toolSuccessRate = toolCount
     ? input.runDetail.toolCalls.filter((item) => ["completed", "success", "ok"].includes(item.status)).length / toolCount
     : 0;
+  const failedModelCalls = input.runDetail.modelCalls.filter((item) => !["completed", "success", "ok"].includes(item.status));
+  const modelUnavailable = modelCount > 0 && failedModelCalls.length === modelCount && outputMarkdown.length === 0;
   const hasEvidence = input.runDetail.evidenceRecords.length > 0;
   const evidenceText = compactForSearch(
     input.runDetail.evidenceRecords
@@ -358,13 +368,16 @@ export function scoreRealRunDetail(input: {
   const memoryWrites = input.memoryWrites ?? [];
   const memoryWrite = expected.requiresMemoryWrite ? (memoryWrites.length > 0 ? 1 : 0) : null;
   const staleDateRate = detectStaleDateRate(outputMarkdown, new Date());
-  const hallucinationRate = estimateHallucinationRate({
-    outputMarkdown,
-    hasEvidence,
-    citationPrecision: factPrecision,
-    evidenceGaps,
-    expected,
-  });
+  const claimHallucinationRate = numberOrNull(claimVerification?.hallucinationRate);
+  const hallucinationRate =
+    claimHallucinationRate ??
+    estimateHallucinationRate({
+      outputMarkdown,
+      hasEvidence,
+      citationPrecision: factPrecision,
+      evidenceGaps,
+      expected,
+    });
   const crossSessionLeakRate =
     expected.forbiddenKeywords?.some((keyword) => includesLoose(outputMarkdown, keyword) || includesLoose(evidenceText, keyword)) ?? false ? 1 : 0;
   const interruptionAccuracy =
@@ -395,12 +408,16 @@ export function scoreRealRunDetail(input: {
     cost_cents: costCents,
   };
 
-  const failureReasons = [
+  const processFailureReasons = [
     ...(terminal ? [] : ["non_terminal_run"]),
     ...(completed || expected.expectedStatus === input.runDetail.status ? [] : [`unexpected_status:${input.runDetail.status}`]),
     ...(toolCount > 0 ? [] : ["missing_real_tool_calls"]),
     ...(modelCount > 0 || expected.allowedNoModelCall ? [] : ["missing_real_model_calls"]),
     ...(metrics.evidence_coverage_rate === 1 ? [] : ["missing_evidence_records"]),
+  ];
+  const qualityFailureReasons = modelUnavailable
+    ? []
+    : [
     ...(metrics.entity_match_rate >= 0.7 ? [] : ["entity_mismatch"]),
     ...(metrics.citation_precision >= 0.7 ? [] : ["citation_precision_low"]),
     ...(metrics.rag_recall_at_k === null || metrics.rag_recall_at_k >= 0.8 ? [] : ["rag_recall_miss"]),
@@ -410,6 +427,18 @@ export function scoreRealRunDetail(input: {
     ...(metrics.stale_date_rate === 0 ? [] : ["stale_date"]),
     ...(metrics.hallucination_rate <= 0.05 ? [] : ["possible_hallucination"]),
   ];
+  const failureReasons = [
+    ...processFailureReasons,
+    ...(modelUnavailable ? ["model_unavailable"] : []),
+    ...qualityFailureReasons,
+  ];
+  const { failureCategory, failureStage } = classifyRealEvalFailure({
+    failureReasons,
+    modelUnavailable,
+    toolSuccessRate,
+    terminal,
+    completed,
+  });
 
   return {
     caseId: `${input.evalCase.id}#${input.turnIndex + 1}`,
@@ -431,6 +460,8 @@ export function scoreRealRunDetail(input: {
     metrics,
     passed: failureReasons.length === 0,
     failureReasons,
+    failureCategory,
+    failureStage,
   };
 }
 
@@ -439,6 +470,10 @@ export function buildRealEvalReport(results: RealEvalCaseResult[]): RealEvalRepo
   const failed = results.filter((item) => !item.passed);
   const toolFailures = countBy(
     results.flatMap((result) => result.toolCalls.filter((tool) => !["completed", "success", "ok"].includes(tool.status)).map((tool) => tool.toolKey))
+  );
+  const failureCategories = countBy(failed.map((item) => `${item.failureCategory}/${item.failureStage}`));
+  const modelFailures = countBy(
+    results.flatMap((result) => result.modelCalls.filter((call) => !["completed", "success", "ok"].includes(call.status)).map(modelFailureLabel))
   );
   const markdown = [
     "# 真实 Agent Eval Report",
@@ -463,17 +498,25 @@ export function buildRealEvalReport(results: RealEvalCaseResult[]): RealEvalRepo
     `- latency_p95_ms: ${summary.latency_p95_ms}`,
     `- total_cost_cents: ${summary.total_cost_cents}`,
     "",
+    "## 失败分类",
+    "",
+    ...(Object.keys(failureCategories).length ? Object.entries(failureCategories).map(([category, count]) => `- ${category}: ${count}`) : ["- none"]),
+    "",
     "## 失败 Case",
     "",
-    "| case | runId | status | reasons |",
-    "|---|---|---|---|",
+    "| case | runId | status | category | reasons |",
+    "|---|---|---|---|---|",
     ...(failed.length
-      ? failed.map((item) => `| ${item.caseId} | ${item.runId} | ${item.finalStatus} | ${item.failureReasons.join(", ")} |`)
-      : ["| none | - | - | - |"]),
+      ? failed.map((item) => `| ${item.caseId} | ${item.runId} | ${item.finalStatus} | ${item.failureCategory}/${item.failureStage} | ${item.failureReasons.join(", ")} |`)
+      : ["| none | - | - | - | - |"]),
     "",
     "## 工具失败分布",
     "",
     ...(Object.keys(toolFailures).length ? Object.entries(toolFailures).map(([tool, count]) => `- ${tool}: ${count}`) : ["- none"]),
+    "",
+    "## 模型失败分布",
+    "",
+    ...(Object.keys(modelFailures).length ? Object.entries(modelFailures).map(([label, count]) => `- ${label}: ${count}`) : ["- none"]),
     "",
     "## 证据缺口与幻觉示例",
     "",
@@ -507,7 +550,7 @@ export function buildRealEvalReport(results: RealEvalCaseResult[]): RealEvalRepo
   ].join("\n");
   return {
     markdown,
-    json: JSON.stringify({ summary, results }, null, 2),
+    json: JSON.stringify({ summary: { ...summary, failureCategories, modelFailures }, results }, null, 2),
     summary,
   };
 }
@@ -979,6 +1022,31 @@ function averageNullableMetric(results: RealEvalCaseResult[], key: keyof RealEva
   return values.length ? round(sum(values) / values.length) : null;
 }
 
+function classifyRealEvalFailure(input: {
+  failureReasons: string[];
+  modelUnavailable: boolean;
+  toolSuccessRate: number;
+  terminal: boolean;
+  completed: boolean;
+}): { failureCategory: RealEvalFailureCategory; failureStage: RealEvalFailureStage } {
+  if (input.failureReasons.length === 0) return { failureCategory: "none", failureStage: "completed" };
+  if (input.modelUnavailable) return { failureCategory: "model", failureStage: "model_generation" };
+  if (input.failureReasons.some((reason) => reason === "missing_real_tool_calls" || reason === "missing_real_model_calls")) {
+    return { failureCategory: "infra", failureStage: "environment" };
+  }
+  if (input.toolSuccessRate < 1) return { failureCategory: "tool", failureStage: "tooling" };
+  if (!input.terminal || !input.completed) return { failureCategory: "runtime", failureStage: "runtime" };
+  return { failureCategory: "quality", failureStage: "quality" };
+}
+
+function modelFailureLabel(call: RealEvalRunDetail["modelCalls"][number]) {
+  const message = call.error?.trim() || call.status || "unknown";
+  if (/insufficient balance|insufficient_quota|quota|billing/i.test(message)) return `${call.model}: insufficient_balance`;
+  if (/unauthorized|forbidden|invalid api key|api key|401|403/i.test(message)) return `${call.model}: auth_failed`;
+  if (/rate limit|too many requests|429/i.test(message)) return `${call.model}: rate_limited`;
+  return `${call.model}: ${message.slice(0, 80)}`;
+}
+
 function estimateCitationPrecision(outputMarkdown: string, evidenceText: string, entityKeywords: string[]) {
   if (!outputMarkdown.trim()) return 0;
   if (!evidenceText.trim()) return 0;
@@ -1022,6 +1090,11 @@ function normalizeRagHits(values: unknown[]): RagHit[] {
       title: String(hit.title ?? ""),
       content: String(hit.content ?? ""),
       source: String(hit.source ?? ""),
+      sourceUrl: stringOrUndefined(hit.sourceUrl),
+      licenseStatus: hit.licenseStatus === "authorized" || hit.licenseStatus === "public" ? hit.licenseStatus : "internal",
+      publishedAt: dateOrUndefined(hit.publishedAt),
+      validUntil: dateOrUndefined(hit.validUntil),
+      removedAt: dateOrUndefined(hit.removedAt),
       score: Number(hit.score ?? 0),
       lexicalScore: Number(hit.lexicalScore ?? 0),
       vectorScore: Number(hit.vectorScore ?? 0),
@@ -1079,9 +1152,21 @@ function stringOrUndefined(value: unknown) {
   return typeof value === "string" ? value : value === null || value === undefined ? undefined : String(value);
 }
 
+function dateOrUndefined(value: unknown) {
+  if (value instanceof Date) return value;
+  if (typeof value !== "string" || !value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 function numberOrUndefined(value: unknown) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : undefined;
+}
+
+function numberOrNull(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function sum(values: number[]) {

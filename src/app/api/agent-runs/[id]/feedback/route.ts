@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { agentApiErrorResponse } from "@/lib/agent-api-errors";
+import { withApiSecurity } from "@/lib/api-security";
 import { PrismaAgentRunRepository } from "@/lib/repositories";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     const { id } = await params;
     const body = await request.json().catch(() => ({}));

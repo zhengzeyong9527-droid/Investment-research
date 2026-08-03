@@ -2,12 +2,18 @@ import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 
 export type RagMetadata = Record<string, string | number | boolean | null | undefined>;
+export type RagLicenseStatus = "authorized" | "internal" | "public";
 
 export type RagDocumentInput = {
   title: string;
   content: string;
   source?: string;
+  sourceUrl?: string | null;
   publishedAt?: Date | string | null;
+  licenseStatus?: RagLicenseStatus;
+  licenseSource?: string;
+  validFrom?: Date | string | null;
+  validUntil?: Date | string | null;
   metadata?: RagMetadata;
 };
 
@@ -16,7 +22,14 @@ export type RagDocumentRecord = {
   title: string;
   content: string;
   source: string;
+  sourceUrl?: string | null;
   publishedAt?: Date | null;
+  licenseStatus: RagLicenseStatus;
+  licenseSource: string;
+  validFrom?: Date | null;
+  validUntil?: Date | null;
+  removedAt?: Date | null;
+  removalReason?: string | null;
   metadata: RagMetadata;
   chunkCount: number;
   createdAt: Date;
@@ -28,8 +41,15 @@ export type RagChunkRecord = {
   title: string;
   content: string;
   source: string;
+  sourceUrl?: string | null;
   chunkIndex: number;
   embedding: number[];
+  licenseStatus: RagLicenseStatus;
+  licenseSource: string;
+  publishedAt?: Date | null;
+  validFrom?: Date | null;
+  validUntil?: Date | null;
+  removedAt?: Date | null;
   metadata: RagMetadata;
 };
 
@@ -39,6 +59,11 @@ export type RagHit = {
   title: string;
   content: string;
   source: string;
+  sourceUrl?: string | null;
+  licenseStatus: RagLicenseStatus;
+  publishedAt?: Date | null;
+  validUntil?: Date | null;
+  removedAt?: Date | null;
   score: number;
   lexicalScore: number;
   vectorScore: number;
@@ -49,6 +74,7 @@ export type RagSearchInput = {
   query: string;
   topK?: number;
   filters?: RagMetadata;
+  includeRemoved?: boolean;
 };
 
 export type EmbeddingProvider = {
@@ -61,6 +87,8 @@ export type RagStore = {
   upsertChunks(chunks: RagChunkRecord[]): Promise<void>;
   listDocuments(): Promise<RagDocumentRecord[]>;
   listChunks(): Promise<RagChunkRecord[]>;
+  searchChunks?(input: { query: string; queryEmbedding: number[]; topK: number; filters?: RagMetadata; includeRemoved?: boolean }): Promise<RagHit[]>;
+  softRemoveDocument?(documentId: string, reason: string): Promise<void>;
 };
 
 export class LocalRagService {
@@ -76,12 +104,24 @@ export class LocalRagService {
     const chunks = chunkDocument(input.content);
     const embeddings = await this.options.embeddingProvider.embedTexts(chunks.map((chunk) => `${input.title}\n${chunk.content}`));
     const metadata = input.metadata ?? {};
+    const licenseStatus = input.licenseStatus ?? "internal";
+    const licenseSource = input.licenseSource ?? input.source ?? "local";
+    const publishedAt = input.publishedAt ? new Date(input.publishedAt) : null;
+    const validFrom = input.validFrom ? new Date(input.validFrom) : null;
+    const validUntil = input.validUntil ? new Date(input.validUntil) : null;
     const document = await this.options.store.upsertDocument({
       id,
       title: input.title,
       content: input.content,
       source: input.source ?? "local",
-      publishedAt: input.publishedAt ? new Date(input.publishedAt) : null,
+      sourceUrl: input.sourceUrl ?? null,
+      publishedAt,
+      licenseStatus,
+      licenseSource,
+      validFrom,
+      validUntil,
+      removedAt: null,
+      removalReason: null,
       metadata,
       chunkCount: chunks.length,
     });
@@ -92,8 +132,15 @@ export class LocalRagService {
         title: input.title,
         content: chunk.content,
         source: input.source ?? "local",
+        sourceUrl: input.sourceUrl ?? null,
         chunkIndex: index,
         embedding: embeddings[index],
+        licenseStatus,
+        licenseSource,
+        publishedAt,
+        validFrom,
+        validUntil,
+        removedAt: null,
         metadata,
       }))
     );
@@ -104,8 +151,19 @@ export class LocalRagService {
     const query = input.query.trim();
     if (!query) return [];
     const [queryEmbedding] = await this.options.embeddingProvider.embedTexts([query]);
-    const chunks = (await this.options.store.listChunks()).filter((chunk) => metadataMatches(chunk.metadata, input.filters));
+    if (this.options.store.searchChunks) {
+      return this.options.store.searchChunks({
+        query,
+        queryEmbedding,
+        topK: input.topK ?? 8,
+        filters: input.filters,
+        includeRemoved: input.includeRemoved,
+      });
+    }
+    const chunks = (await this.options.store.listChunks()).filter((chunk) => chunkMatchesFilters(chunk, input.filters));
     return chunks
+      .filter((chunk) => input.includeRemoved || !chunk.removedAt)
+      .filter((chunk) => !chunk.validUntil || chunk.validUntil.getTime() >= Date.now())
       .map((chunk) => {
         const lexicalScore = lexicalSimilarity(query, `${chunk.title}\n${chunk.content}`);
         const vectorScore = cosineSimilarity(queryEmbedding, chunk.embedding);
@@ -116,6 +174,11 @@ export class LocalRagService {
           title: chunk.title,
           content: chunk.content,
           source: chunk.source,
+          sourceUrl: chunk.sourceUrl,
+          licenseStatus: chunk.licenseStatus,
+          publishedAt: chunk.publishedAt,
+          validUntil: chunk.validUntil,
+          removedAt: chunk.removedAt,
           score: round(score),
           lexicalScore: round(lexicalScore),
           vectorScore: round(vectorScore),
@@ -129,6 +192,13 @@ export class LocalRagService {
   async listDocuments() {
     return this.options.store.listDocuments();
   }
+
+  async removeDocument(documentId: string, reason: string) {
+    if (!this.options.store.softRemoveDocument) {
+      throw new Error("RAG store does not support soft removal.");
+    }
+    await this.options.store.softRemoveDocument(documentId, reason);
+  }
 }
 
 export class InMemoryRagStore implements RagStore {
@@ -137,13 +207,13 @@ export class InMemoryRagStore implements RagStore {
 
   async upsertDocument(input: Omit<RagDocumentRecord, "createdAt">) {
     const existing = this.documents.get(input.id);
-    const record = { ...input, createdAt: existing?.createdAt ?? new Date() };
+    const record = { ...existing, ...input, createdAt: existing?.createdAt ?? new Date() };
     this.documents.set(input.id, record);
     return record;
   }
 
   async upsertChunks(chunks: RagChunkRecord[]) {
-    for (const chunk of chunks) this.chunks.set(chunk.id, chunk);
+    for (const chunk of chunks) this.chunks.set(chunk.id, { ...this.chunks.get(chunk.id), ...chunk });
   }
 
   async listDocuments() {
@@ -152,6 +222,15 @@ export class InMemoryRagStore implements RagStore {
 
   async listChunks() {
     return [...this.chunks.values()];
+  }
+
+  async softRemoveDocument(documentId: string, reason: string) {
+    const removedAt = new Date();
+    const document = this.documents.get(documentId);
+    if (document) this.documents.set(documentId, { ...document, removedAt, removalReason: reason });
+    for (const [id, chunk] of this.chunks) {
+      if (chunk.documentId === documentId) this.chunks.set(id, { ...chunk, removedAt });
+    }
   }
 }
 
@@ -170,16 +249,30 @@ export class PrismaRagStore implements RagStore {
         title: input.title,
         content: input.content,
         source: input.source,
+        sourceUrl: input.sourceUrl,
         publishedAt: input.publishedAt,
-        metadata: JSON.stringify(input.metadata ?? {}),
+        licenseStatus: input.licenseStatus,
+        licenseSource: input.licenseSource,
+        validFrom: input.validFrom,
+        validUntil: input.validUntil,
+        removedAt: input.removedAt,
+        removalReason: input.removalReason,
+        metadata: input.metadata ?? {},
         chunkCount: input.chunkCount,
       },
       update: {
         title: input.title,
         content: input.content,
         source: input.source,
+        sourceUrl: input.sourceUrl,
         publishedAt: input.publishedAt,
-        metadata: JSON.stringify(input.metadata ?? {}),
+        licenseStatus: input.licenseStatus,
+        licenseSource: input.licenseSource,
+        validFrom: input.validFrom,
+        validUntil: input.validUntil,
+        removedAt: input.removedAt,
+        removalReason: input.removalReason,
+        metadata: input.metadata ?? {},
         chunkCount: input.chunkCount,
       },
     });
@@ -202,16 +295,30 @@ export class PrismaRagStore implements RagStore {
           title: chunk.title,
           content: chunk.content,
           source: chunk.source,
+          sourceUrl: chunk.sourceUrl,
           chunkIndex: chunk.chunkIndex,
-          metadata: JSON.stringify(chunk.metadata ?? {}),
+          licenseStatus: chunk.licenseStatus,
+          licenseSource: chunk.licenseSource,
+          publishedAt: chunk.publishedAt,
+          validFrom: chunk.validFrom,
+          validUntil: chunk.validUntil,
+          removedAt: chunk.removedAt,
+          metadata: chunk.metadata ?? {},
           embeddingJson: JSON.stringify(chunk.embedding),
         },
         update: {
           title: chunk.title,
           content: chunk.content,
           source: chunk.source,
+          sourceUrl: chunk.sourceUrl,
           chunkIndex: chunk.chunkIndex,
-          metadata: JSON.stringify(chunk.metadata ?? {}),
+          licenseStatus: chunk.licenseStatus,
+          licenseSource: chunk.licenseSource,
+          publishedAt: chunk.publishedAt,
+          validFrom: chunk.validFrom,
+          validUntil: chunk.validUntil,
+          removedAt: chunk.removedAt,
+          metadata: chunk.metadata ?? {},
           embeddingJson: JSON.stringify(chunk.embedding),
         },
       });
@@ -233,6 +340,35 @@ export class PrismaRagStore implements RagStore {
     };
     const records = await client.ragChunk.findMany({ orderBy: [{ documentId: "asc" }, { chunkIndex: "asc" }] });
     return records.map(shapeChunkRecord);
+  }
+
+  async searchChunks(input: { query: string; queryEmbedding: number[]; topK: number; filters?: RagMetadata; includeRemoved?: boolean }) {
+    const client = prisma as unknown as {
+      $queryRawUnsafe(query: string, ...values: unknown[]): Promise<Array<Record<string, unknown>>>;
+    };
+    try {
+      const rows = await queryPgVectorCandidates(client, input);
+      return rankRagRows(input.query, input.queryEmbedding, rows, input.topK, input.filters);
+    } catch (error) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error(`pgvector RAG search failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      const chunks = (await this.listChunks())
+        .filter((chunk) => input.includeRemoved || !chunk.removedAt)
+        .filter((chunk) => !chunk.validUntil || chunk.validUntil.getTime() >= Date.now())
+        .filter((chunk) => chunkMatchesFilters(chunk, input.filters));
+      return rankChunks(input.query, input.queryEmbedding, chunks, input.topK);
+    }
+  }
+
+  async softRemoveDocument(documentId: string, reason: string) {
+    const client = prisma as unknown as {
+      ragDocument: { update(args: unknown): Promise<unknown> };
+      ragChunk: { updateMany(args: unknown): Promise<unknown> };
+    };
+    const removedAt = new Date();
+    await client.ragDocument.update({ where: { id: documentId }, data: { removedAt, removalReason: reason } });
+    await client.ragChunk.updateMany({ where: { documentId }, data: { removedAt } });
   }
 }
 
@@ -318,7 +454,14 @@ function shapeDocumentRecord(record: Record<string, unknown>): RagDocumentRecord
     title: String(record.title ?? ""),
     content: String(record.content ?? ""),
     source: String(record.source ?? "local"),
-    publishedAt: record.publishedAt instanceof Date ? record.publishedAt : null,
+    sourceUrl: stringOrNull(record.sourceUrl),
+    publishedAt: dateOrNull(record.publishedAt),
+    licenseStatus: parseLicenseStatus(record.licenseStatus),
+    licenseSource: String(record.licenseSource ?? ""),
+    validFrom: dateOrNull(record.validFrom),
+    validUntil: dateOrNull(record.validUntil),
+    removedAt: dateOrNull(record.removedAt),
+    removalReason: stringOrNull(record.removalReason),
     metadata: parseMetadata(record.metadata),
     chunkCount: Number(record.chunkCount ?? 0),
     createdAt: record.createdAt instanceof Date ? record.createdAt : new Date(),
@@ -332,10 +475,87 @@ function shapeChunkRecord(record: Record<string, unknown>): RagChunkRecord {
     title: String(record.title ?? ""),
     content: String(record.content ?? ""),
     source: String(record.source ?? "local"),
+    sourceUrl: stringOrNull(record.sourceUrl),
     chunkIndex: Number(record.chunkIndex ?? 0),
     embedding: parseEmbedding(record.embeddingJson),
+    licenseStatus: parseLicenseStatus(record.licenseStatus),
+    licenseSource: String(record.licenseSource ?? ""),
+    publishedAt: dateOrNull(record.publishedAt),
+    validFrom: dateOrNull(record.validFrom),
+    validUntil: dateOrNull(record.validUntil),
+    removedAt: dateOrNull(record.removedAt),
     metadata: parseMetadata(record.metadata),
   };
+}
+
+async function queryPgVectorCandidates(
+  client: { $queryRawUnsafe(query: string, ...values: unknown[]): Promise<Array<Record<string, unknown>>> },
+  input: { queryEmbedding: number[]; topK: number; filters?: RagMetadata; includeRemoved?: boolean }
+) {
+  const where = ['c."embedding" IS NOT NULL'];
+  const values: unknown[] = [vectorLiteral(input.queryEmbedding)];
+  const filters = input.filters ?? {};
+  if (!input.includeRemoved) {
+    where.push('c."removedAt" IS NULL');
+    where.push('(c."validUntil" IS NULL OR c."validUntil" >= NOW())');
+  }
+  if (filters.source) {
+    values.push(String(filters.source));
+    where.push(`c."source" = $${values.length}`);
+  }
+  if (filters.licenseStatus) {
+    values.push(String(filters.licenseStatus));
+    where.push(`c."licenseStatus" = $${values.length}`);
+  }
+  values.push(Math.max(input.topK * 8, input.topK, 24));
+  const limitPlaceholder = `$${values.length}`;
+  return client.$queryRawUnsafe(
+    `
+      SELECT
+        c."id", c."documentId", c."title", c."content", c."source", c."sourceUrl",
+        c."chunkIndex", c."metadata", c."embeddingJson", c."licenseStatus", c."licenseSource",
+        c."publishedAt", c."validFrom", c."validUntil", c."removedAt",
+        (c."embedding" <=> $1::vector) AS "distance"
+      FROM "RagChunk" c
+      WHERE ${where.join(" AND ")}
+      ORDER BY c."embedding" <=> $1::vector ASC
+      LIMIT ${limitPlaceholder}
+    `,
+    ...values
+  );
+}
+
+function rankRagRows(query: string, queryEmbedding: number[], rows: Array<Record<string, unknown>>, topK: number, filters?: RagMetadata): RagHit[] {
+  const chunks = rows.map(shapeChunkRecord).filter((chunk) => metadataMatches(chunk.metadata, metadataOnlyFilters(filters)));
+  return rankChunks(query, queryEmbedding, chunks, topK, rows);
+}
+
+function rankChunks(query: string, queryEmbedding: number[], chunks: RagChunkRecord[], topK: number, rawRows: Array<Record<string, unknown>> = []): RagHit[] {
+  const distanceById = new Map(rawRows.map((row) => [String(row.id), Number(row.distance)]));
+  return chunks
+    .map((chunk) => {
+      const lexicalScore = lexicalSimilarity(query, `${chunk.title}\n${chunk.content}`);
+      const vectorScore = distanceById.has(chunk.id) ? clamp(1 - Number(distanceById.get(chunk.id)), 0, 1) : cosineSimilarity(queryEmbedding, chunk.embedding);
+      const score = 0.55 * lexicalScore + 0.45 * vectorScore;
+      return {
+        chunkId: chunk.id,
+        documentId: chunk.documentId,
+        title: chunk.title,
+        content: chunk.content,
+        source: chunk.source,
+        sourceUrl: chunk.sourceUrl,
+        licenseStatus: chunk.licenseStatus,
+        publishedAt: chunk.publishedAt,
+        validUntil: chunk.validUntil,
+        removedAt: chunk.removedAt,
+        score: round(score),
+        lexicalScore: round(lexicalScore),
+        vectorScore: round(vectorScore),
+        metadata: chunk.metadata,
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
 }
 
 async function writePgVector(
@@ -343,7 +563,7 @@ async function writePgVector(
   chunkId: string,
   embedding: number[]
 ) {
-  const literal = `[${embedding.map((value) => Number(value.toFixed(8))).join(",")}]`;
+  const literal = vectorLiteral(embedding);
   try {
     await client.$executeRawUnsafe('UPDATE "RagChunk" SET "embedding" = $1::vector WHERE "id" = $2', literal, chunkId);
   } catch {
@@ -373,9 +593,37 @@ function parseEmbedding(value: unknown) {
   }
 }
 
+function parseLicenseStatus(value: unknown): RagLicenseStatus {
+  return value === "authorized" || value === "internal" || value === "public" ? value : "internal";
+}
+
+function dateOrNull(value: unknown) {
+  if (value instanceof Date) return value;
+  if (typeof value !== "string" || !value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function stringOrNull(value: unknown) {
+  return typeof value === "string" && value ? value : null;
+}
+
 function metadataMatches(metadata: RagMetadata, filters?: RagMetadata) {
   if (!filters) return true;
   return Object.entries(filters).every(([key, value]) => value === undefined || value === null || String(metadata[key] ?? "") === String(value));
+}
+
+function chunkMatchesFilters(chunk: RagChunkRecord, filters?: RagMetadata) {
+  if (!filters) return true;
+  if (filters.source && String(chunk.source) !== String(filters.source)) return false;
+  if (filters.licenseStatus && String(chunk.licenseStatus) !== String(filters.licenseStatus)) return false;
+  return metadataMatches(chunk.metadata, metadataOnlyFilters(filters));
+}
+
+function metadataOnlyFilters(filters?: RagMetadata): RagMetadata | undefined {
+  if (!filters) return undefined;
+  const { source: _source, licenseStatus: _licenseStatus, ...metadataFilters } = filters;
+  return metadataFilters;
 }
 
 function lexicalSimilarity(query: string, text: string) {
@@ -404,6 +652,14 @@ function cosineSimilarity(a: number[], b: number[]) {
   }
   if (normA === 0 || normB === 0) return 0;
   return (dot / (Math.sqrt(normA) * Math.sqrt(normB)) + 1) / 2;
+}
+
+function vectorLiteral(embedding: number[]) {
+  return `[${embedding.map((value) => Number(value.toFixed(8))).join(",")}]`;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function deterministicVector(text: string, dimensions: number) {

@@ -7,9 +7,26 @@ type RateBucket = {
 
 const buckets = new Map<string, RateBucket>();
 
-export function requireAppAuth(request: Request) {
-  const token = process.env.APP_AUTH_TOKEN?.trim();
-  if (!token || process.env.NODE_ENV === "test") return null;
+export type ApiSecurityOptions = {
+  auth?: boolean;
+  rateLimit?: { key: string; limit: number; windowMs: number };
+  env?: Partial<Pick<NodeJS.ProcessEnv, "APP_AUTH_TOKEN" | "NODE_ENV">>;
+};
+
+export function withApiSecurity(request: Request, options: ApiSecurityOptions = {}) {
+  if (options.auth !== false) {
+    const auth = requireAppAuth(request, options.env);
+    if (auth) return auth;
+  }
+  if (options.rateLimit) {
+    return checkRateLimit(request, options.rateLimit.key, options.rateLimit);
+  }
+  return null;
+}
+
+export function requireAppAuth(request: Request, env: Partial<Pick<NodeJS.ProcessEnv, "APP_AUTH_TOKEN" | "NODE_ENV">> = process.env) {
+  const token = env.APP_AUTH_TOKEN?.trim();
+  if (!token || env.NODE_ENV === "test") return null;
   const header = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
   const altHeader = request.headers.get("x-app-auth-token")?.trim();
   if (header === token || altHeader === token) return null;

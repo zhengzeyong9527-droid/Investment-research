@@ -43,7 +43,7 @@ services:
       APP_AUTH_TOKEN: ${APP_AUTH_TOKEN:-}
     command: >
       sh -c "corepack enable &&
-      pnpm install --frozen-lockfile=false &&
+      pnpm install --frozen-lockfile &&
       pnpm db:push &&
       pnpm build &&
       pnpm start"
@@ -69,7 +69,7 @@ services:
       APP_AUTH_TOKEN: ${APP_AUTH_TOKEN:-}
     command: >
       sh -c "corepack enable &&
-      pnpm install --frozen-lockfile=false &&
+      pnpm install --frozen-lockfile &&
       pnpm db:push &&
       pnpm worker:agent"
     depends_on:

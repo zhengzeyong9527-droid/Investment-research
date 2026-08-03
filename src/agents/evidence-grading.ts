@@ -1,6 +1,6 @@
 import type { EvidenceRecordInput, JsonRecord } from "@/lib/agent";
 
-export type EvidenceGrade = {
+export type EvidenceCompletenessGrade = {
   score: number;
   passed: boolean;
   evidenceCount: number;
@@ -12,6 +12,8 @@ export type EvidenceGrade = {
   toolFailureCount?: number;
 };
 
+export type EvidenceGrade = EvidenceCompletenessGrade;
+
 export function gradeEvidence(input: {
   skillKey: string;
   normalizedInput: JsonRecord;
@@ -19,6 +21,16 @@ export function gradeEvidence(input: {
   evidenceGaps?: Array<{ toolKey: string; reason: string }>;
   now?: Date;
 }): EvidenceGrade {
+  return evaluateEvidenceCompleteness(input);
+}
+
+export function evaluateEvidenceCompleteness(input: {
+  skillKey: string;
+  normalizedInput: JsonRecord;
+  evidence: EvidenceRecordInput[];
+  evidenceGaps?: Array<{ toolKey: string; reason: string }>;
+  now?: Date;
+}): EvidenceCompletenessGrade {
   const evidence = input.evidence;
   const sourceCounts = evidence.reduce<Record<string, number>>((map, item) => {
     map[item.kind] = (map[item.kind] ?? 0) + 1;
@@ -83,11 +95,11 @@ export function insufficientEvidenceMarkdown(grade: EvidenceGrade, input: JsonRe
   const target = stringValue(input.stockName) || stringValue(input.stockCode) || stringValue(input.industryName) || stringValue(input.industryCode) || "当前问题";
   const missing = grade.missing.length > 0 ? grade.missing.join(", ") : "有效证据不足";
   return [
-    `## 证据不足，暂不生成确定性报告`,
+    `## 证据不足，无法形成确定结论`,
     "",
     `对象：${target}`,
     "",
-    `本轮没有取得足够可追溯的数据来源，因此我不能直接生成确定性研究结论。`,
+    `本轮没有取得足够可追溯的数据来源，因此我不能直接生成确定性研究报告。`,
     "",
     `缺口：${missing}`,
     "",

@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { InvestodayDataAdapter } from "@/lib/investoday";
+import { withApiSecurity } from "@/lib/api-security";
 import { deleteWatchTarget, listWatchTargets, updateWatchTarget } from "@/lib/repositories";
 import { buildWatchTargetRepairPlan, type RepairableWatchTarget } from "@/lib/watch-targets";
 
-export async function POST() {
+export async function POST(request: Request) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   const adapter = new InvestodayDataAdapter();
   let targets = (await listWatchTargets()) as RepairableWatchTarget[];
   const pendingTargets = targets.filter((target) => target.code.startsWith("NAME:"));

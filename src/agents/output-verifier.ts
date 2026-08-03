@@ -1,11 +1,13 @@
 import type { EvidenceRecordInput, JsonRecord } from "@/lib/agent";
 import type { EvidenceGrade } from "@/agents/evidence-grading";
+import { verifyClaimsAgainstEvidence, type ClaimVerification } from "@/agents/claim-verifier";
 
 export type OutputVerification = {
   passed: boolean;
   issues: Array<{ code: string; message: string }>;
   checkedAt: string;
   runtimeDate: string;
+  claimVerification: ClaimVerification;
   timeWindow?: { beginDate: string; endDate: string; days: number };
 };
 
@@ -46,12 +48,23 @@ export function verifyAgentOutput(input: {
     }
   }
 
+  const claimVerification = verifyClaimsAgainstEvidence({
+    markdown,
+    inputPayload: input.inputPayload,
+    evidence: input.evidence,
+    evidenceGrade: input.evidenceGrade,
+  });
+  for (const claim of claimVerification.blockingUnsupportedClaims) {
+    issues.push({ code: "unsupported_claim", message: `${claim.type} is not supported by evidence: ${claim.text}` });
+  }
+
   const timeWindow = buildTimeWindow(input.inputPayload, now);
   return {
-    passed: issues.length === 0,
+    passed: issues.length === 0 && claimVerification.blockingUnsupportedClaims.length === 0,
     issues,
     checkedAt: new Date().toISOString(),
     runtimeDate,
+    claimVerification,
     ...(timeWindow ? { timeWindow } : {}),
   };
 }
@@ -74,7 +87,7 @@ function asksForRecent(inputPayload: JsonRecord) {
 
 function extractQuotedReportTitles(markdown: string) {
   const titles = new Set<string>();
-  for (const match of markdown.matchAll(/[《「“"]([^》」”"]{6,80})(?:》|」|”|")/g)) {
+  for (const match of markdown.matchAll(/[\u300a\u300c\u201c"]([^\u300b\u300d\u201d"]{6,80})(?:\u300b|\u300d|\u201d|")/g)) {
     const text = (match[1] ?? "").trim();
     if (/研报|点评|报告|深度|跟踪|首次|覆盖/.test(text)) titles.add(text);
   }

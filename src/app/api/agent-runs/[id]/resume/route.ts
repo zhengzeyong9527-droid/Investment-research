@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
+import { executeInlineWhenMockQueue } from "@/agents/mock-inline";
 import { createAgentQueue } from "@/agents/queue";
 import { buildResumePayloadFromMessage } from "@/agents/interrupted-resume";
 import type { AgentKey } from "@/agents/types";
 import { agentApiErrorResponse } from "@/lib/agent-api-errors";
+import { withApiSecurity } from "@/lib/api-security";
 import { getAgentRunForExecution, PrismaAgentRunRepository } from "@/lib/repositories";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
@@ -14,8 +18,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!run) {
       return NextResponse.json({ error: "Agent run not found" }, { status: 404 });
     }
-    const currentPayload = isRecord(run.inputPayload) ? run.inputPayload : {};
-    const bodyPayload = isRecord(body.inputPayload) ? body.inputPayload : {};
+    const rawInputPayload: unknown = run.inputPayload;
+    const currentPayload: Record<string, unknown> = isRecord(rawInputPayload) ? { ...rawInputPayload } : {};
+    const bodyPayload: Record<string, unknown> = isRecord(body.inputPayload) ? { ...body.inputPayload } : {};
     const messagePayload =
       typeof body.message === "string" || typeof body.content === "string"
         ? buildResumePayloadFromMessage(String(body.message ?? body.content))
@@ -26,23 +31,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       ...messagePayload,
       riskConfirmed: body.riskConfirmed ?? messagePayload.riskConfirmed ?? bodyPayload.riskConfirmed ?? true,
     };
+    const queue = createAgentQueue();
     const updated = await prisma.agentRun.update({
       where: { id },
       data: {
         status: "queued",
-        inputPayload: JSON.stringify(inputPayload),
+        inputPayload,
         outputMarkdown: null,
-        outputJson: "{}",
+        outputJson: {},
         error: null,
         completedAt: null,
       },
     });
-    await createAgentQueue().enqueue({
+    await queue.enqueue({
       runId: id,
       agentKey: agentKeyForQueue(updated.agentKey),
       sessionId: updated.sessionId ?? id,
+      resumePayload: inputPayload,
     });
-    await new PrismaAgentRunRepository().appendAgentStep({
+    const repository = new PrismaAgentRunRepository();
+    await repository.appendAgentStep({
       agentRunId: id,
       nodeKey: "resume",
       order: 99,
@@ -50,6 +58,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       status: "completed",
       message: "Run resumed and queued.",
     });
+    await executeInlineWhenMockQueue({ runId: id, repository, resumePayload: inputPayload });
     return NextResponse.json({ ...updated, inputPayload });
   } catch (error) {
     return agentApiErrorResponse(error, "Agent resume failed", 400);

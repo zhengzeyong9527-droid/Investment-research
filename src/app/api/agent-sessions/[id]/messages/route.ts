@@ -4,6 +4,7 @@ import { buildResumePayloadFromMessage, isSupplementForInterruptedRun } from "@/
 import { createAgentRunTask } from "@/agents/runs";
 import type { AgentKey } from "@/agents/types";
 import { agentApiErrorResponse } from "@/lib/agent-api-errors";
+import { withApiSecurity } from "@/lib/api-security";
 import {
   appendAgentMessage,
   getActiveInterruptedRun,
@@ -15,6 +16,8 @@ import {
 const MARKET_BROADCAST_SKILL = "investoday-stock-market-broadcast";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     const { id: sessionId } = await params;
     const body = await request.json().catch(() => ({}));
@@ -32,6 +35,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
 
     const abilityKey = typeof body.abilityKey === "string" ? body.abilityKey : "auto";
+    const queue = createAgentQueue();
     const repository = new PrismaAgentRunRepository();
     await appendAgentMessage({ sessionId, role: "user", content });
     if (before.messages.length === 0 || before.title === "新对话") {
@@ -59,10 +63,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         status: "completed",
         message: "User supplement merged into interrupted run and queued.",
       });
-      await createAgentQueue().enqueue({
+      await queue.enqueue({
         runId: interruptedRun.id,
         agentKey: agentKeyForQueue(interruptedRun.agentKey),
         sessionId,
+        resumePayload: inputPayload,
       });
       const session = await getAgentSessionDetail(sessionId);
       return NextResponse.json({ session, run }, { status: 202 });
@@ -77,7 +82,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       inputPayload: { ...(isRecord(body.inputPayload) ? body.inputPayload : {}), abilityKey },
       triggerType: "chat",
       repository,
-      queue: createAgentQueue(),
+      queue,
     });
     const session = await getAgentSessionDetail(sessionId);
     return NextResponse.json({ session, run }, { status: 201 });

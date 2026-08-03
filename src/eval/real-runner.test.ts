@@ -117,6 +117,38 @@ describe("real agent eval runner", () => {
     expect(result.passed).toBe(false);
     expect(result.failureReasons).toContain("missing_real_tool_calls");
     expect(result.failureReasons).toContain("missing_real_model_calls");
+    expect(result.failureCategory).toBe("infra");
+  });
+
+  it("classifies empty output from failed model calls as a model failure instead of citation quality", () => {
+    const result = scoreRealRunDetail({
+      evalCase: baseCase,
+      turnIndex: 0,
+      runDetail: {
+        ...completedRun,
+        status: "failed",
+        outputMarkdown: "",
+        modelCalls: [
+          {
+            id: "model-failed",
+            model: "deepseek-v4-flash",
+            status: "failed",
+            tokenInput: 1200,
+            tokenOutput: 0,
+            costCents: 0,
+            latencyMs: 500,
+            error: "Insufficient Balance",
+          },
+        ],
+      },
+      latencyMs: 4200,
+    });
+
+    expect(result.failureCategory).toBe("model");
+    expect(result.failureStage).toBe("model_generation");
+    expect(result.failureReasons).toContain("model_unavailable");
+    expect(result.failureReasons).not.toContain("citation_precision_low");
+    expect(result.failureReasons).not.toContain("memory_write_miss");
   });
 
   it("builds reports from real run ids and process data", () => {
@@ -132,6 +164,7 @@ describe("real agent eval runner", () => {
     expect(report.markdown).toContain("真实 Agent Eval Report");
     expect(report.markdown).toContain("run-real-1");
     expect(report.markdown).toContain("工具失败分布");
+    expect(report.markdown).toContain("模型失败分布");
     expect(parsed.summary.total).toBe(1);
     expect(parsed.summary.terminal_rate).toBe(1);
     expect(parsed.results).toHaveLength(1);

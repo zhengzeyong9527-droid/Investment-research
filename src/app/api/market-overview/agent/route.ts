@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { createAgentQueue } from "@/agents/queue";
 import { createAgentRunTask } from "@/agents/runs";
 import { agentApiErrorResponse } from "@/lib/agent-api-errors";
+import { withApiSecurity } from "@/lib/api-security";
 import { PrismaAgentRunRepository } from "@/lib/repositories";
 
 export async function POST(request: Request) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     const body = await request.json().catch(() => ({}));
     const run = await createAgentRunTask({

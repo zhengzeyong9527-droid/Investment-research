@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import { createLangGraphCheckpointer } from "@/agents/checkpointer";
 
 describe("langgraph checkpointer", () => {
-  it("creates no checkpointer without DATABASE_URL and a Postgres saver with one", () => {
-    expect(createLangGraphCheckpointer("")).toBeNull();
-    expect(createLangGraphCheckpointer("postgresql://user:pass@localhost:5432/db")).toBeTruthy();
+  it("uses an in-memory saver in tests", () => {
+    expect(createLangGraphCheckpointer("", "test")).toBeTruthy();
+  });
+
+  it("uses Postgres only when a Postgres URL is available outside tests", () => {
+    expect(createLangGraphCheckpointer("", "production")).toBeNull();
+    expect(createLangGraphCheckpointer("postgresql://user:pass@localhost:5432/db", "production")).toBeTruthy();
   });
 });

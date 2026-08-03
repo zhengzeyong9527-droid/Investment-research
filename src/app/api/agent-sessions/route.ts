@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { agentApiErrorResponse } from "@/lib/agent-api-errors";
+import { withApiSecurity } from "@/lib/api-security";
 import { createAgentSession, listAgentSessions } from "@/lib/repositories";
 
 export async function GET(request: Request) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     const url = new URL(request.url);
     return NextResponse.json(await listAgentSessions(url.searchParams.get("q") ?? undefined));
@@ -12,6 +15,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     const body = await request.json().catch(() => ({}));
     const session = await createAgentSession({

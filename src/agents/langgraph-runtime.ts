@@ -1,79 +1,130 @@
-import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
-import type { AgentKey, BaseAgentState } from "@/agents/types";
-import { getAgentManifest } from "@/agents/registry";
+﻿import { Annotation, Command, END, INTERRUPT, START, StateGraph, isGraphInterrupt, isInterrupted } from "@langchain/langgraph";
+import type { AgentKey } from "@/agents/types";
 import { createLangGraphCheckpointer } from "@/agents/checkpointer";
-import { executeAgentRunJob, type AgentRuntimeRepository, type ExecutableAgentRun } from "@/agents/executor";
+import { appendAssistantMessage, type AgentRuntimeRepository, type ExecutableAgentRun } from "@/agents/executor";
 import { createToolRegistry } from "@/tools/registry";
 import type { ToolRegistry } from "@/tools/types";
 import { OpenAIModelProvider, type ModelProvider } from "@/agents/model-provider";
+import { createMockAgentRuntime, isAgentMockMode } from "@/agents/mock-runtime";
+import { createGraphNodes } from "@/agents/graph/nodes";
+import {
+  routeAfterCheckMissing,
+  routeAfterGrade,
+  routeAfterMemory,
+  routeAfterVerify,
+  routeFromRouter,
+} from "@/agents/graph/routes";
+import { initialGraphState, type AgentGraphDeps } from "@/agents/graph/state";
 
 const AgentState = Annotation.Root({
   runId: Annotation<string>,
-  sessionId: Annotation<string>,
-  agentKey: Annotation<string>,
+  sessionId: Annotation<string | null>,
+  userId: Annotation<string | null>,
+  agentKey: Annotation<AgentKey>,
   question: Annotation<string>,
+  skillKey: Annotation<string>,
   inputPayload: Annotation<Record<string, unknown>>,
-  messages: Annotation<BaseAgentState["messages"]>,
-  evidenceIds: Annotation<string[]>,
-  toolCallIds: Annotation<string[]>,
-  modelCallIds: Annotation<string[]>,
-  memoryItemIds: Annotation<string[]>,
-  skillRunIds: Annotation<string[]>,
-  outputJson: Annotation<Record<string, unknown> | undefined>,
-  outputMarkdown: Annotation<string | undefined>,
+  resolvedEntities: Annotation<unknown>,
+  intentPlan: Annotation<Record<string, unknown> | undefined>,
+  memoryHits: Annotation<unknown[]>,
+  evidence: Annotation<unknown[]>,
+  evidenceGaps: Annotation<unknown[]>,
+  ragHits: Annotation<unknown[]>,
+  evidenceGrade: Annotation<unknown>,
+  skillResult: Annotation<unknown>,
+  verification: Annotation<unknown>,
+  interrupt: Annotation<Record<string, unknown> | null | undefined>,
+  attempts: Annotation<number>,
+  outputMarkdown: Annotation<string>,
+  outputJson: Annotation<Record<string, unknown>>,
+  status: Annotation<string>,
   nodeKeys: Annotation<string[]>,
+  resumedFromInterrupt: Annotation<boolean | undefined>,
+  marketData: Annotation<Record<string, unknown> | undefined>,
 });
 
 export const RESEARCH_GRAPH_NODE_KEYS = [
+  "router",
   "resolve_entity",
   "plan_intent",
+  "normalize_input",
+  "check_missing",
   "retrieve_memory",
-  "fetch_tools",
+  "fetch_evidence",
   "local_rag_retrieve",
   "grade_evidence",
   "generate",
-  "verify",
-  "persist",
+  "verify_output",
+  "commit_memory",
+  "finalize",
 ] as const;
 
 export const MARKET_GRAPH_NODE_KEYS = [
-  "load_market_data",
+  "router",
+  "fetch_market",
+  "build_market_evidence",
   "retrieve_memory",
-  "build_evidence",
   "local_rag_retrieve",
   "grade_evidence",
-  "run_broadcast_skill",
+  "run_broadcast",
   "verify_output",
-  "persist",
+  "commit_memory",
+  "finalize",
 ] as const;
 
 export function getAgentGraphNodeKeys(agentKey: AgentKey): string[] {
   return [...(agentKey === "market-broadcast-agent" ? MARKET_GRAPH_NODE_KEYS : RESEARCH_GRAPH_NODE_KEYS)];
 }
 
-export function compileAgentGraph(agentKey: AgentKey) {
-  const manifest = getAgentManifest(agentKey);
-  const nodeKeys = getAgentGraphNodeKeys(agentKey);
+export function compileAgentGraph(deps: AgentGraphDeps) {
+  const nodes = createGraphNodes(deps);
   const graph = new StateGraph(AgentState) as any;
-  for (const nodeKey of nodeKeys) {
-    graph.addNode(nodeKey, async (state: {
-      nodeKeys?: string[];
-      outputJson?: Record<string, unknown>;
-    }) => ({
-      ...state,
-      nodeKeys: [...(state.nodeKeys ?? []), nodeKey],
-      outputJson: {
-        ...(state.outputJson ?? {}),
-        graphKey: manifest.graphKey,
-        lastNodeKey: nodeKey,
-      },
-    }));
+
+  for (const [nodeKey, node] of Object.entries(nodes)) {
+    graph.addNode(nodeKey, node);
   }
-  graph.addEdge(START, nodeKeys[0]);
-  for (let index = 0; index < nodeKeys.length - 1; index += 1) {
-    graph.addEdge(nodeKeys[index], nodeKeys[index + 1]);
-  }
-  graph.addEdge(nodeKeys[nodeKeys.length - 1], END);
+
+  graph.addEdge(START, "router");
+  graph.addConditionalEdges("router", routeFromRouter, {
+    resolve_entity: "resolve_entity",
+    fetch_market: "fetch_market",
+  });
+
+  graph.addEdge("resolve_entity", "plan_intent");
+  graph.addEdge("plan_intent", "normalize_input");
+  graph.addEdge("normalize_input", "check_missing");
+  graph.addConditionalEdges("check_missing", routeAfterCheckMissing, {
+    normalize_input: "normalize_input",
+    retrieve_memory: "retrieve_memory",
+  });
+  graph.addConditionalEdges("retrieve_memory", routeAfterMemory, {
+    fetch_evidence: "fetch_evidence",
+    local_rag_retrieve: "local_rag_retrieve",
+  });
+  graph.addEdge("fetch_evidence", "local_rag_retrieve");
+  graph.addEdge("local_rag_retrieve", "grade_evidence");
+  graph.addConditionalEdges("grade_evidence", routeAfterGrade, {
+    degrade: "degrade",
+    generate: "generate",
+    run_broadcast: "run_broadcast",
+  });
+  graph.addEdge("generate", "verify_output");
+  graph.addConditionalEdges("verify_output", routeAfterVerify, {
+    commit_memory: "commit_memory",
+    degrade: "degrade",
+    generate: "generate",
+    run_broadcast: "run_broadcast",
+    finalize: "finalize",
+  });
+
+  graph.addEdge("fetch_market", "build_market_evidence");
+  graph.addEdge("build_market_evidence", "retrieve_memory");
+  graph.addEdge("run_broadcast", "verify_output");
+
+  graph.addEdge("degrade", "finalize");
+  graph.addEdge("commit_memory", "finalize");
+  graph.addEdge("finalize", END);
+
   const checkpointer = createLangGraphCheckpointer();
   return checkpointer ? graph.compile({ checkpointer }) : graph.compile();
 }
@@ -83,120 +134,65 @@ export async function executeAgentGraphJob(input: {
   repository: AgentRuntimeRepository;
   toolRegistry?: ToolRegistry;
   modelProvider?: ModelProvider;
+  resumePayload?: Record<string, unknown>;
 }) {
-  const agentKey = (input.run.agentKey ?? "research-router-agent") as AgentKey;
-  const nodeKeys = getAgentGraphNodeKeys(agentKey);
-  const toolRegistry = input.toolRegistry ?? createToolRegistry();
-  const graphState = {
-    graphKey: getAgentManifest(agentKey).graphKey,
-    nodeKeys,
-    ragHits: [] as unknown[],
-    toolResults: [] as unknown[],
-    evidenceGaps: [] as unknown[],
+  const mockRuntime = isAgentMockMode() ? createMockAgentRuntime() : null;
+  const deps: AgentGraphDeps = {
+    repository: input.repository,
+    toolRegistry: input.toolRegistry ?? mockRuntime?.toolRegistry ?? createToolRegistry(),
+    modelProvider: input.modelProvider ?? mockRuntime?.modelProvider ?? new OpenAIModelProvider(),
   };
-  if (process.env.NODE_ENV !== "test") {
-    try {
-      const compiled = compileAgentGraph(agentKey);
-      const graphOutput = await compiled.invoke(
-        {
-          runId: input.run.id,
-          sessionId: input.run.sessionId ?? input.run.id,
-          agentKey,
-          question: input.run.question,
-          inputPayload: input.run.inputPayload,
-          messages: [],
-          evidenceIds: [],
-          toolCallIds: [],
-          modelCallIds: [],
-          memoryItemIds: [],
-          skillRunIds: [],
-          outputJson: {},
-          outputMarkdown: undefined,
-          nodeKeys: [],
-        },
-        { configurable: { thread_id: input.run.sessionId ?? input.run.id } }
-      );
-      graphState.nodeKeys = Array.isArray(graphOutput.nodeKeys) ? graphOutput.nodeKeys : nodeKeys;
-    } catch (error) {
-      graphState.evidenceGaps.push({
-        toolKey: "langgraph.invoke",
-        reason: error instanceof Error ? error.message : String(error),
-      });
+  const compiled = compileAgentGraph(deps);
+  const thread_id = input.run.sessionId ?? input.run.id;
+  const invokeInput = input.resumePayload ? new Command({ resume: input.resumePayload }) : initialGraphState(input.run);
+  try {
+    const output = await compiled.invoke(invokeInput, { configurable: { thread_id } });
+    if (isInterrupted<Record<string, unknown>>(output)) {
+      await persistInterrupt(input.repository, input.run, output[INTERRUPT][0]?.value);
     }
-  }
-  const repository = input.repository;
-  for (let index = 0; index < nodeKeys.length; index += 1) {
-    const nodeKey = nodeKeys[index];
-    await repository.appendAgentStep({
-      agentRunId: input.run.id,
-      nodeKey,
-      order: index + 1,
-      title: nodeKey,
-      status: "completed",
-      message: nodeMessage(nodeKey),
+    return output;
+  } catch (error) {
+    if (isInterrupted<Record<string, unknown>>(error)) {
+      await persistInterrupt(input.repository, input.run, error[INTERRUPT][0]?.value);
+      return error;
+    }
+    if (isGraphInterrupt(error)) {
+      await persistInterrupt(input.repository, input.run, error.interrupts[0]?.value as Record<string, unknown> | undefined);
+      return error;
+    }
+    await input.repository.updateAgentRun(input.run.id, {
+      status: "failed",
+      error: error instanceof Error ? error.message : String(error),
+      completedAt: new Date(),
     });
-    if (nodeKey === "local_rag_retrieve") {
-      try {
-        const result = await toolRegistry.call("rag.search", { query: input.run.question, topK: 6 }, {
-          agentRunId: input.run.id,
-          sessionId: input.run.sessionId ?? input.run.id,
-          agentKey,
-          userId: input.run.userId,
-          recordToolCall: repository.recordToolCall,
-        });
-        graphState.ragHits = Array.isArray(result.data) ? result.data : [];
-        graphState.toolResults.push({ toolKey: "rag.search", ok: true, latencyMs: result.latencyMs ?? 0 });
-        await persistGraphDiagnostics(repository, input.run.id, graphState);
-      } catch (error) {
-        graphState.evidenceGaps.push({
-          toolKey: "rag.search",
-          reason: error instanceof Error ? error.message : String(error),
-        });
-        graphState.toolResults.push({ toolKey: "rag.search", ok: false });
-        await persistGraphDiagnostics(repository, input.run.id, graphState);
-      }
-    }
-    if (isGenerateNode(agentKey, nodeKey)) {
-      await executeAgentRunJob({
-        run: { ...input.run, agentKey, graphState },
-        repository,
-        toolRegistry,
-        modelProvider: input.modelProvider ?? new OpenAIModelProvider(),
-      });
-    }
+    throw error;
   }
 }
 
-async function persistGraphDiagnostics(repository: AgentRuntimeRepository, runId: string, graphState: Record<string, unknown>) {
-  await repository.updateAgentRun(runId, {
+async function persistInterrupt(
+  repository: AgentRuntimeRepository,
+  run: ExecutableAgentRun,
+  interruptPayload?: Record<string, unknown>
+) {
+  if (!interruptPayload || interruptPayload.type !== "missing_input") return;
+  const message = typeof interruptPayload.message === "string" ? interruptPayload.message : "请补充缺失信息后继续。";
+  const skillKey = typeof interruptPayload.skillKey === "string" ? interruptPayload.skillKey : run.skillKey;
+  await repository.updateAgentRun(run.id, {
+    status: "interrupted",
+    skillKey,
+    outputMarkdown: message,
     outputJson: {
-      graphState,
-      ragHits: graphState.ragHits,
-      evidenceGaps: graphState.evidenceGaps,
-      toolResults: graphState.toolResults,
+      ...(run.graphState ? { previousGraphState: run.graphState } : {}),
+      interrupt: interruptPayload,
+      graphState: {
+        nodeKeys: ["router", "resolve_entity", "plan_intent", "normalize_input", "check_missing"],
+        interrupt: interruptPayload,
+        attempts: 0,
+      },
     },
+    error: null,
+    completedAt: new Date(),
   });
+  await appendAssistantMessage(repository, run, message);
 }
 
-function isGenerateNode(agentKey: AgentKey, nodeKey: string) {
-  return agentKey === "market-broadcast-agent" ? nodeKey === "run_broadcast_skill" : nodeKey === "generate";
-}
-
-function nodeMessage(nodeKey: string) {
-  const messages: Record<string, string> = {
-    resolve_entity: "Resolved request entities.",
-    plan_intent: "Planned primary and supporting intent.",
-    retrieve_memory: "Retrieved short-term and long-term memory.",
-    fetch_tools: "Fetched external tool evidence.",
-    local_rag_retrieve: "Retrieved local RAG evidence.",
-    grade_evidence: "Graded evidence quality.",
-    generate: "Generated answer.",
-    verify: "Verified output.",
-    persist: "Persisted run state.",
-    load_market_data: "Loaded market data.",
-    build_evidence: "Built market evidence package.",
-    run_broadcast_skill: "Generated market broadcast.",
-    verify_output: "Verified market output.",
-  };
-  return messages[nodeKey] ?? nodeKey;
-}

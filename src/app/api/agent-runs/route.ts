@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { executeInlineWhenMockQueue } from "@/agents/mock-inline";
 import { createAgentQueue } from "@/agents/queue";
 import { createAgentRunTask } from "@/agents/runs";
 import { agentApiErrorResponse } from "@/lib/agent-api-errors";
+import { withApiSecurity } from "@/lib/api-security";
 import { listAgentRuns, PrismaAgentRunRepository } from "@/lib/repositories";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     return NextResponse.json(await listAgentRuns());
   } catch (error) {
@@ -13,17 +17,21 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const security = withApiSecurity(request);
+  if (security) return security;
   try {
     const body = await request.json();
+    const repository = new PrismaAgentRunRepository();
     const run = await createAgentRunTask({
       agentKey: "research-router-agent",
       question: String(body.question ?? ""),
       inputPayload: body.inputPayload ?? {},
       abilityKey: body.abilityKey ?? body.skillKey,
       triggerType: "compat",
-      repository: new PrismaAgentRunRepository(),
+      repository,
       queue: createAgentQueue(),
     });
+    await executeInlineWhenMockQueue({ runId: run.id, repository });
     return NextResponse.json(run, { status: 201 });
   } catch (error) {
     return agentApiErrorResponse(error, "Agent task creation failed", 400);

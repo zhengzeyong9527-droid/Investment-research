@@ -6,7 +6,6 @@ import type { DailyBriefRepository } from "@/lib/briefs";
 import { buildBriefItemDisplay, cleanDisplayText } from "@/lib/display";
 import { prisma } from "@/lib/prisma";
 import type { BriefDraft, NormalizedWatchTarget } from "@/lib/types";
-import { deserializeTags, serializeTags } from "@/lib/watch-targets";
 
 export const watchTargetSelect = {
   id: true,
@@ -20,10 +19,10 @@ export const watchTargetSelect = {
   updatedAt: true,
 } satisfies Prisma.WatchTargetSelect;
 
-export function shapeWatchTarget<T extends { tags: string }>(target: T) {
+export function shapeWatchTarget<T extends { tags: unknown }>(target: T) {
   return {
     ...target,
-    tags: deserializeTags(target.tags),
+    tags: jsonArray(target.tags).filter((item): item is string => typeof item === "string"),
   };
 }
 
@@ -39,7 +38,7 @@ export async function createWatchTarget(input: NormalizedWatchTarget) {
   const target = await prisma.watchTarget.create({
     data: {
       ...input,
-      tags: serializeTags(input.tags),
+      tags: jsonArray(input.tags),
     },
     select: watchTargetSelect,
   });
@@ -53,7 +52,7 @@ export async function updateWatchTarget(id: string, input: Partial<NormalizedWat
       ...(input.type ? { type: input.type } : {}),
       ...(input.code ? { code: input.code } : {}),
       ...(input.name ? { name: input.name } : {}),
-      ...(input.tags ? { tags: serializeTags(input.tags) } : {}),
+      ...(input.tags ? { tags: jsonArray(input.tags) } : {}),
       ...(input.reason !== undefined ? { reason: input.reason } : {}),
       ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
     },
@@ -151,17 +150,39 @@ export class PrismaAnalysisRepository implements AnalysisRepository {
     inputContext: string;
     output: string | null;
   }) {
-    return prisma.analysisRun.create({
+    const legacyContext = jsonObject(data.inputContext);
+    const run = await prisma.agentRun.create({
       data: {
+        agentKey: "research-router-agent",
+        question: legacyQuestionFromContext(legacyContext),
         skillKey: data.skillKey,
-        targetId: data.targetId,
-        briefItemId: data.briefItemId,
-        dailyBriefId: data.dailyBriefId,
-        status: data.status,
-        inputContext: data.inputContext,
-        output: data.output,
+        triggerType: "legacy-analysis-placeholder",
+        status: analysisStatusToAgentStatus(data.status),
+        inputPayload: {
+          legacyAnalysis: true,
+          targetId: data.targetId ?? null,
+          briefItemId: data.briefItemId ?? null,
+          dailyBriefId: data.dailyBriefId ?? null,
+          context: legacyContext,
+        },
+        promptPackage: data.inputContext,
+        outputMarkdown: data.output,
+        outputJson: {
+          legacyAnalysis: {
+            status: data.status,
+            targetId: data.targetId ?? null,
+            briefItemId: data.briefItemId ?? null,
+            dailyBriefId: data.dailyBriefId ?? null,
+          },
+        },
       },
     });
+    return {
+      id: run.id,
+      status: data.status,
+      inputContext: data.inputContext,
+      output: data.output,
+    };
   }
 }
 
@@ -204,7 +225,7 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
         skillKey: data.skillKey,
         triggerType: data.triggerType ?? "manual",
         status: data.status,
-        inputPayload: stringifyJson(data.inputPayload),
+        inputPayload: jsonObject(data.inputPayload),
         promptPackage: data.promptPackage,
       },
     });
@@ -234,8 +255,8 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
       where: { id },
       data: {
         ...rest,
-        ...(outputJson !== undefined ? { outputJson: stringifyJson(outputJson ?? {}) } : {}),
-        ...(inputPayload !== undefined ? { inputPayload: stringifyJson(inputPayload) ?? "{}" } : {}),
+        ...(outputJson !== undefined ? { outputJson: jsonObject(outputJson ?? {}) } : {}),
+        ...(inputPayload !== undefined ? { inputPayload: jsonObject(inputPayload) } : {}),
       },
     });
     return shapeAgentRun(run);
@@ -304,7 +325,7 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
     });
     return runs.map((run) => ({
       ...run,
-      inputPayload: (parseJson(run.inputPayload) ?? {}) as JsonRecord,
+      inputPayload: jsonObject(run.inputPayload),
     }));
   }
 
@@ -344,7 +365,7 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
         skillKey: data.skillKey,
         skillPath: data.skillPath,
         status: data.status,
-        inputPayload: stringifyJson(data.inputPayload),
+        inputPayload: jsonObject(data.inputPayload),
         promptPackage: data.promptPackage,
       },
     });
@@ -374,7 +395,7 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
       publishedAt: record.publishedAt,
       summary: record.summary,
       sourceEndpoint: record.sourceEndpoint,
-      rawPayload: parseJson(record.rawPayload),
+      rawPayload: jsonValue(record.rawPayload),
     }));
   }
 
@@ -393,7 +414,7 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
       data: {
         agentRunId: data.agentRunId,
         toolKey: data.toolKey,
-        inputJson: stringifyJson(data.inputJson) ?? "{}",
+        inputJson: jsonObject(data.inputJson),
         outputSummary: data.outputSummary,
         rawPayloadRef: data.rawPayloadRef,
         status: data.status,
@@ -455,7 +476,7 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
         runId: data.runId,
         rating: data.rating,
         comment: data.comment ?? "",
-        tags: stringifyJson(data.tags ?? []) ?? "[]",
+        tags: jsonArray(data.tags ?? []),
       },
     });
   }
@@ -547,9 +568,9 @@ export async function getAgentRun(id: string) {
   return {
     ...shapeAgentRun(run),
     steps: run.steps,
-    skillRuns: run.skillRuns.map((item) => ({ ...item, inputPayload: parseJson(item.inputPayload) })),
-    evidence: run.evidence.map((item) => ({ ...item, rawPayload: parseJson(item.rawPayload) })),
-    toolCalls: run.toolCalls.map((item) => ({ ...item, inputJson: parseJson(item.inputJson) })),
+    skillRuns: run.skillRuns.map((item) => ({ ...item, inputPayload: jsonObject(item.inputPayload) })),
+    evidence: run.evidence.map((item) => ({ ...item, rawPayload: jsonValue(item.rawPayload) })),
+    toolCalls: run.toolCalls.map((item) => ({ ...item, inputJson: jsonObject(item.inputJson) })),
     modelCalls: run.modelCalls,
   };
 }
@@ -573,7 +594,7 @@ export async function listEvidenceRecords(agentRunId: string) {
     where: { agentRunId },
     orderBy: { fetchedAt: "desc" },
   });
-  return records.map((record) => ({ ...record, rawPayload: parseJson(record.rawPayload) }));
+  return records.map((record) => ({ ...record, rawPayload: jsonValue(record.rawPayload) }));
 }
 
 export async function createEvidenceRecords(agentRunId: string, records: EvidenceRecordInput[], skillRunId?: string, toolCallId?: string) {
@@ -589,7 +610,7 @@ export async function createEvidenceRecords(agentRunId: string, records: Evidenc
       publishedAt: record.publishedAt,
       summary: record.summary ?? "",
       sourceEndpoint: record.sourceEndpoint ?? "",
-      rawPayload: stringifyJson(record.rawPayload) ?? "{}",
+      rawPayload: jsonValue(record.rawPayload) ?? {},
     })),
   });
   return listEvidenceRecords(agentRunId);
@@ -603,8 +624,8 @@ export async function getSkillRun(id: string) {
   if (!run) return null;
   return {
     ...run,
-    inputPayload: parseJson(run.inputPayload),
-    evidence: run.evidence.map((item) => ({ ...item, rawPayload: parseJson(item.rawPayload) })),
+    inputPayload: jsonObject(run.inputPayload),
+    evidence: run.evidence.map((item) => ({ ...item, rawPayload: jsonValue(item.rawPayload) })),
   };
 }
 
@@ -701,7 +722,7 @@ function shapeDailyBrief<
       normalizedPayload: string | null;
       detailText?: string;
       fetchedAt?: Date;
-      target?: { tags: string; name: string; code: string } | null;
+      target?: { tags: unknown; name: string; code: string } | null;
     }>;
   },
 >(brief: T) {
@@ -722,7 +743,7 @@ function shapeBriefItemForClient<
     normalizedPayload: string | null;
     detailText?: string;
     fetchedAt?: Date;
-    target?: ({ tags: string; name: string; code: string } & Record<string, unknown>) | null;
+    target?: ({ tags: unknown; name: string; code: string } & Record<string, unknown>) | null;
   } & Record<string, unknown>,
 >(item: T) {
   const rawPayload = parseJson(item.rawPayload);
@@ -770,11 +791,40 @@ function parseJson(value: string | null | undefined) {
   }
 }
 
-function shapeAgentRun<T extends { inputPayload: string }>(run: T) {
+export function jsonValue(value: unknown): unknown {
+  if (typeof value !== "string") return value ?? null;
+  const parsed = parseJson(value);
+  return parsed ?? null;
+}
+
+export function jsonObject(value: unknown): JsonRecord {
+  const parsed = jsonValue(value);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as JsonRecord) : {};
+}
+
+export function jsonArray(value: unknown): unknown[] {
+  const parsed = jsonValue(value);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+function legacyQuestionFromContext(context: JsonRecord) {
+  const skillName = typeof context.skillName === "string" ? context.skillName : undefined;
+  const targetName = typeof context.targetName === "string" ? context.targetName : undefined;
+  const title = typeof context.title === "string" ? context.title : undefined;
+  return [skillName, targetName, title].filter(Boolean).join(" / ") || "Legacy analysis placeholder";
+}
+
+function analysisStatusToAgentStatus(status: "pending" | "completed" | "failed") {
+  if (status === "completed") return "completed";
+  if (status === "failed") return "failed";
+  return "created";
+}
+
+function shapeAgentRun<T extends { inputPayload: unknown }>(run: T) {
   return {
     ...run,
-    inputPayload: (parseJson(run.inputPayload) ?? {}) as JsonRecord,
-    outputJson: (parseJson((run as { outputJson?: string }).outputJson) ?? {}) as JsonRecord,
+    inputPayload: jsonObject(run.inputPayload),
+    outputJson: jsonObject((run as { outputJson?: unknown }).outputJson),
   };
 }
 
