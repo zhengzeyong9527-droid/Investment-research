@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { lookupStockAlias } from "@/lib/stock-aliases";
@@ -35,20 +36,86 @@ export function resolveCliInvocation(
   args: string[],
   platform = process.platform,
   appData = process.env.APPDATA,
-  nodePath = process.execPath
+  nodePath = process.execPath,
+  localAppData = process.env.LOCALAPPDATA,
+  envPath = process.env.PATH,
+  explicitBin = process.env.INVESTODAY_API_BIN
 ) {
-  if (platform === "win32" && command === "investoday-api" && appData) {
-    return {
-      command: nodePath,
-      args: [
-        path.join(appData, "npm", "node_modules", "@investoday", "investoday-api", "bin", "investoday-api.js"),
-        ...args,
-      ],
-      shell: false,
-    };
+  if (platform === "win32" && command === "investoday-api") {
+    const jsBin =
+      (explicitBin && explicitBin.toLowerCase().endsWith(".js") ? explicitBin : null) ??
+      firstExisting([
+        appData ? path.join(appData, "npm", "node_modules", "@investoday", "investoday-api", "bin", "investoday-api.js") : null,
+        findPnpmGlobalInvestodayApi(localAppData),
+      ]) ??
+      (appData ? path.join(appData, "npm", "node_modules", "@investoday", "investoday-api", "bin", "investoday-api.js") : null);
+
+    if (jsBin) {
+      return {
+        command: nodePath,
+        args: [jsBin, ...args],
+        shell: false,
+      };
+    }
+
+    const commandBin =
+      explicitBin && !explicitBin.toLowerCase().endsWith(".js")
+        ? explicitBin
+        : findCommandOnPath("investoday-api.cmd", envPath) ?? findCommandOnPath("investoday-api.exe", envPath);
+    if (commandBin) {
+      return {
+        command: commandBin,
+        args,
+        shell: commandBin.toLowerCase().endsWith(".cmd") || commandBin.toLowerCase().endsWith(".bat"),
+      };
+    }
   }
 
   return { command, args, shell: false };
+}
+
+function findPnpmGlobalInvestodayApi(localAppData?: string) {
+  if (!localAppData) return null;
+  const globalDir = path.join(localAppData, "pnpm", "global");
+  for (const versionDir of safeDirectoryNames(globalDir)) {
+    for (const installDir of safeDirectoryNames(path.join(globalDir, versionDir))) {
+      const candidate = path.join(
+        globalDir,
+        versionDir,
+        installDir,
+        "node_modules",
+        "@investoday",
+        "investoday-api",
+        "bin",
+        "investoday-api.js"
+      );
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+function firstExisting(candidates: Array<string | null | undefined>) {
+  return candidates.find((candidate): candidate is string => Boolean(candidate && existsSync(candidate))) ?? null;
+}
+
+function findCommandOnPath(commandName: string, envPath?: string) {
+  if (!envPath) return null;
+  for (const directory of envPath.split(path.delimiter).filter(Boolean)) {
+    const candidate = path.join(directory, commandName);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function safeDirectoryNames(directory: string) {
+  try {
+    return readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name);
+  } catch {
+    return [];
+  }
 }
 
 export async function checkInvestodayHealth(run: CommandRunner = defaultCommandRunner) {

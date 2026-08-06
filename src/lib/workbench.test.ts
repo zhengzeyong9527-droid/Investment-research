@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { AnalysisRepository } from "@/lib/analysis";
 import { createAnalysisPlaceholder } from "@/lib/analysis";
@@ -228,7 +231,9 @@ describe("investoday health check", () => {
         ["search-api", "query=贵州茅台 600519 新闻"],
         "win32",
         "C:\\Users\\me\\AppData\\Roaming",
-        "node.exe"
+        "node.exe",
+        undefined,
+        ""
       )
     ).toEqual({
       command: "node.exe",
@@ -239,6 +244,37 @@ describe("investoday health check", () => {
       ],
       shell: false,
     });
+  });
+
+  it("uses pnpm global package bin when the npm appdata install is absent", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "investoday-api-"));
+    try {
+      const localAppData = path.join(root, "Local");
+      const binDir = path.join(
+        localAppData,
+        "pnpm",
+        "global",
+        "v11",
+        "install-id",
+        "node_modules",
+        "@investoday",
+        "investoday-api",
+        "bin"
+      );
+      const binPath = path.join(binDir, "investoday-api.js");
+      mkdirSync(binDir, { recursive: true });
+      writeFileSync(binPath, "");
+
+      expect(
+        resolveCliInvocation("investoday-api", ["list"], "win32", path.join(root, "Roaming"), "node.exe", localAppData, "")
+      ).toEqual({
+        command: "node.exe",
+        args: [binPath, "list"],
+        shell: false,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("reports healthy when the CLI responds", async () => {
