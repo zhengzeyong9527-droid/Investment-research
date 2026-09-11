@@ -920,7 +920,8 @@ async function seedEvalRagDocuments() {
   ]);
 }
 
-async function defaultCheckDatabase(_databaseUrl: string) {
+async function defaultCheckDatabase(databaseUrl: string) {
+  if (!databaseUrl) throw new Error("DATABASE_URL is required.");
   await prisma.$queryRaw`SELECT 1`;
 }
 

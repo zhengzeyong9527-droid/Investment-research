@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { executeAgentRunJob, type AgentRuntimeRepository, type ExecutableAgentRun } from "@/agents/executor";
 import { StaticModelProvider } from "@/agents/model-provider";
+import { mockToolCall } from "@/test/agent-fixtures";
 import type { ToolRegistry } from "@/tools/types";
 
 function createRepository(): AgentRuntimeRepository {
@@ -26,11 +27,11 @@ function createToolRegistry(): ToolRegistry {
       toolKey,
       description: toolKey,
       sourceEndpoint: toolKey,
-      riskLevel: "read",
+      riskLevel: "read" as const,
       timeoutMs: 1000,
       retry: 0,
     })),
-    call: vi.fn(async (toolKey) => ({
+    call: mockToolCall(async (toolKey) => ({
       toolCallId: `tool-${toolKey}`,
       data:
         toolKey === "stock.resolve"
@@ -44,7 +45,7 @@ function createToolRegistry(): ToolRegistry {
 
 function createResolvingToolRegistry(): ToolRegistry {
   const registry = createToolRegistry();
-  registry.call = vi.fn(async (toolKey, input) => ({
+  registry.call = mockToolCall(async (toolKey, input) => ({
     toolCallId: `tool-${toolKey}`,
     data:
       toolKey === "stock.resolve"
@@ -54,27 +55,6 @@ function createResolvingToolRegistry(): ToolRegistry {
           : [],
   }));
   return registry;
-}
-
-function createLegacyToolRegistry(): ToolRegistry {
-  return {
-    list: vi.fn(() => []),
-    get: vi.fn((toolKey) => ({
-      toolKey,
-      description: toolKey,
-      sourceEndpoint: toolKey,
-      riskLevel: "read",
-      timeoutMs: 1000,
-      retry: 0,
-    })),
-    call: vi.fn(async (toolKey) => ({
-      toolCallId: `tool-${toolKey}`,
-      data:
-        toolKey === "stock.briefItems"
-          ? [{ kind: "news", title: "rating text", source: "Investoday", summary: "contains research rating words" }]
-          : { source: toolKey, value: "ok" },
-    })),
-  };
 }
 
 function finalRunUpdate(repository: AgentRuntimeRepository) {
@@ -143,7 +123,7 @@ describe("agent executor compliance behavior", () => {
 
   it("passes recent session messages to the skill prompt and stores the assistant reply", async () => {
     const repository = createRepository();
-    vi.mocked(repository.listRecentAgentMessages).mockResolvedValue([
+    vi.mocked(repository.listRecentAgentMessages!).mockResolvedValue([
       { role: "user", content: "first question" },
       { role: "assistant", content: "first answer" },
     ]);
@@ -280,7 +260,7 @@ describe("agent executor compliance behavior", () => {
   it("calls memory.search before a research answer and stores memory hits in outputJson", async () => {
     const repository = createRepository();
     const toolRegistry = createResolvingToolRegistry();
-    vi.mocked(toolRegistry.call).mockImplementation(async (toolKey, input) => ({
+    toolRegistry.call = mockToolCall(async (toolKey, input) => ({
       toolCallId: `tool-${toolKey}`,
       data:
         toolKey === "memory.search"
@@ -325,7 +305,7 @@ describe("agent executor compliance behavior", () => {
         inputPayload: { stockCodeOrName: "600519", stockCode: "600519", stockName: "\u8d35\u5dde\u8305\u53f0", timeWindowDays: 90 },
       },
     ]);
-    vi.mocked(repository.listRecentAgentMessages).mockResolvedValue([
+    vi.mocked(repository.listRecentAgentMessages!).mockResolvedValue([
       { role: "assistant", content: "\u4e0a\u8f6e\u56de\u7b54\u5305\u542b 19 \u4e2a\u6570\u5b57\uff0c\u4e0d\u5e94\u88ab\u5f53\u6210\u65f6\u95f4\u7a97\u53e3" },
       { role: "user", content: "\u6cbf\u7528\u4e0a\u9762\u65f6\u95f4\u8303\u56f4" },
     ]);
@@ -355,7 +335,7 @@ describe("agent executor compliance behavior", () => {
   it("routes industry research through industry tools instead of stock brief items", async () => {
     const repository = createRepository();
     const toolRegistry = createToolRegistry();
-    vi.mocked(toolRegistry.call).mockImplementation(async (toolKey) => ({
+    toolRegistry.call = mockToolCall(async (toolKey) => ({
       toolCallId: `tool-${toolKey}`,
       data:
         toolKey === "memory.search"
@@ -387,7 +367,7 @@ describe("agent executor compliance behavior", () => {
   it("returns an evidence-insufficient answer instead of a deterministic report when industry evidence is empty", async () => {
     const repository = createRepository();
     const toolRegistry = createToolRegistry();
-    vi.mocked(toolRegistry.call).mockResolvedValue({ toolCallId: "tool-empty", data: [] });
+    toolRegistry.call = mockToolCall(async () => ({ toolCallId: "tool-empty", data: [] }));
     const modelProvider = new StaticModelProvider("should not be used");
     modelProvider.streamMarkdown = vi.fn(modelProvider.streamMarkdown);
 
@@ -418,7 +398,7 @@ describe("agent executor compliance behavior", () => {
   it("normalizes Chinese unwind questions before missing-input checks", async () => {
     const repository = createRepository();
     const toolRegistry = createToolRegistry();
-    vi.mocked(toolRegistry.call).mockImplementation(async (toolKey, input) => ({
+    toolRegistry.call = mockToolCall(async (toolKey, input) => ({
       toolCallId: `tool-${toolKey}`,
       data:
         toolKey === "entity.recognition" && String(input.query) === "永兴材料"
@@ -457,7 +437,7 @@ describe("agent executor compliance behavior", () => {
   it("plans multi-intent unwind questions and fetches supporting lithium evidence", async () => {
     const repository = createRepository();
     const toolRegistry = createToolRegistry();
-    vi.mocked(toolRegistry.call).mockImplementation(async (toolKey, input) => ({
+    toolRegistry.call = mockToolCall(async (toolKey, input) => ({
       toolCallId: `tool-${toolKey}`,
       data:
         toolKey === "entity.recognition" && String(input.query) === "永兴材料"
@@ -516,7 +496,7 @@ describe("agent executor compliance behavior", () => {
   it("completes unwind research when stock, loss, and position are present without risk confirmation", async () => {
     const repository = createRepository();
     const toolRegistry = createToolRegistry();
-    vi.mocked(toolRegistry.call).mockImplementation(async (toolKey, input) => ({
+    toolRegistry.call = mockToolCall(async (toolKey, input) => ({
       toolCallId: `tool-${toolKey}`,
       data:
         toolKey === "entity.recognition" && String(input.query) === "永兴材料"

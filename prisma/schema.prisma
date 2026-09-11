@@ -313,7 +313,7 @@ model RagChunk {
   validUntil     DateTime?
   removedAt      DateTime?
   metadata       Json         @default("{}")
-  embedding      Unsupported("vector")?
+  embedding      Unsupported("vector(1536)")?
   embeddingJson  String       @default("[]")
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt

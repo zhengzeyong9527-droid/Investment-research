@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildEntityCandidates, parseUnwindFields, resolveAgentEntities } from "@/agents/entity-resolver";
+import { mockToolCall } from "@/test/agent-fixtures";
 import type { ToolRegistry } from "@/tools/types";
 
 function mockContext() {
@@ -14,7 +15,7 @@ function mockContext() {
 
 function mockRegistry(responses: Record<string, unknown>): Pick<ToolRegistry, "call"> {
   return {
-    call: vi.fn(async (toolKey: string, input: Record<string, unknown>) => {
+    call: mockToolCall(async (toolKey, input) => {
       const key = `${toolKey}:${String(input.query ?? input.stockCodeOrName ?? input.conceptName ?? "")}`;
       if (key in responses) return { toolCallId: `tool-${toolKey}`, data: responses[key] };
       if (toolKey in responses) return { toolCallId: `tool-${toolKey}`, data: responses[toolKey] };
@@ -25,7 +26,7 @@ function mockRegistry(responses: Record<string, unknown>): Pick<ToolRegistry, "c
 
 function createRegistryMock(handler: (toolKey: string, input: Record<string, unknown>) => unknown): Pick<ToolRegistry, "call"> {
   return {
-    call: vi.fn(async (toolKey: string, input: Record<string, unknown>) => ({
+    call: mockToolCall(async (toolKey, input) => ({
       toolCallId: `tool-${toolKey}`,
       data: handler(toolKey, input),
     })),

@@ -7,6 +7,7 @@ import { AgentChatView } from "@/components/workbench/agent-chat-view";
 import { BriefView } from "@/components/workbench/brief-view";
 import { navItems, statusLabel } from "@/components/workbench/constants";
 import { MarketOverviewView } from "@/components/workbench/market-overview-view";
+import { PetWidget } from "@/components/workbench/pet-widget";
 import { SettingsView } from "@/components/workbench/settings-view";
 import type { AgentMemoryItem, AgentMessage, AgentRun, AgentSession, AgentSessionDetail, AppSettings, BriefHistory, DailyBrief, HotspotOverview, SkillCatalogItem, View, WatchTarget } from "@/components/workbench/types";
 import { isTerminalAgentRunStatus, useAgentRunEvents } from "@/components/workbench/use-agent-run-events";
@@ -55,9 +56,11 @@ export function WorkbenchApp() {
   const [health, setHealth] = useState<{ ok: boolean; message: string } | null>(null);
   const [notice, setNotice] = useState("Agent 工作台已就绪");
   const [loading, setLoading] = useState(false);
+  const [marketWeak, setMarketWeak] = useState(false);
 
   const today = useMemo(() => shanghaiDateString(new Date()), []);
   const briefItems = brief?.items ?? [];
+  const petBusy = loading || Boolean(liveRunId) || Boolean(liveSessionId) || Boolean(activeAgentRun && !isTerminalAgentRunStatus(activeAgentRun.status));
 
   const markAgentStorageAvailable = useCallback(() => {
     setAgentStorageStatus("available");
@@ -429,6 +432,7 @@ export function WorkbenchApp() {
           <MarketOverviewView
             setLoading={setLoading}
             setNotice={setNotice}
+            onMarketWeakChange={setMarketWeak}
             onAgentCreated={async (id) => {
               await reloadAgents(id);
               await openAgentRun(id);
@@ -483,6 +487,7 @@ export function WorkbenchApp() {
           />
         )}
       </div>
+      <PetWidget busy={petBusy} marketWeak={marketWeak} />
     </main>
   );
 }

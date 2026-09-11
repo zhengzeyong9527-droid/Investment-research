@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowLeft, ChevronRight, Flame, Search, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { HotspotType, RollingHotspot } from "@/components/workbench/types";
 
@@ -35,10 +36,10 @@ export function HotspotListView({
     <main className="glass-shell min-h-screen bg-terminal px-6 py-7 text-ink max-sm:px-4">
       <div className="grain" />
       <div className="relative mx-auto max-w-7xl">
-        <a href="/" className="mb-5 inline-flex items-center gap-2 rounded-md border border-jade/20 bg-white/70 px-3 py-2 text-sm font-semibold text-jade shadow-sm backdrop-blur hover:border-jade/45 hover:bg-white">
+        <Link href="/" className="mb-5 inline-flex items-center gap-2 rounded-md border border-jade/20 bg-white/70 px-3 py-2 text-sm font-semibold text-jade shadow-sm backdrop-blur hover:border-jade/45 hover:bg-white">
           <ArrowLeft size={16} />
           返回工作台
-        </a>
+        </Link>
 
         <section className={`hotspot-list-hero hotspot-list-${type} mb-5 p-6 max-sm:p-5`}>
           <div className="flex flex-wrap items-end justify-between gap-4">
@@ -93,7 +94,7 @@ export function HotspotListView({
 
 function HotspotListRow({ item, index }: { item: RollingHotspot; index: number }) {
   return (
-    <a href={`/hotspots/${item.type}/${item.code}`} className="hotspot-list-row">
+    <Link href={`/hotspots/${item.type}/${item.code}`} className="hotspot-list-row">
       <span className="hotspot-rank">{String(index + 1).padStart(2, "0")}</span>
       <span className="min-w-0">
         <strong>{item.name}</strong>
@@ -108,7 +109,7 @@ function HotspotListRow({ item, index }: { item: RollingHotspot; index: number }
       </span>
       <strong className={marketValueClass(item.changeRatio)}>{formatPercent(item.changeRatio)}</strong>
       <ChevronRight size={16} className="text-ink/28" />
-    </a>
+    </Link>
   );
 }
 

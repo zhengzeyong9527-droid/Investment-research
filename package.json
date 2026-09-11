@@ -21,8 +21,13 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
-    "test": "vitest run",
+    "test": "vitest run --config vitest.config.ts && vitest run --config vitest.infra.config.ts",
     "test:watch": "vitest",
+    "test:integration:infra": "vitest run --config vitest.infra.config.ts",
+    "db:migrate": "prisma migrate deploy",
+    "db:bootstrap": "tsx scripts/db-bootstrap.ts",
+    "db:adopt": "tsx scripts/db-adopt.ts",
+    "infra:verify": "tsx scripts/check-infra.ts",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "postinstall": "prisma generate"
@@ -49,6 +54,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "3.3.6",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@types/node": "^22.10.2",

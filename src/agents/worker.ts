@@ -7,10 +7,28 @@ import { createMockAgentRuntime, isAgentMockMode } from "@/agents/mock-runtime";
 import { createToolRegistry } from "@/tools/registry";
 import { loadDotEnv } from "@/lib/load-env";
 import { getAgentRunForExecution, PrismaAgentRunRepository } from "@/lib/repositories";
+import { closeLangGraphCheckpointer, initializeLangGraphCheckpointer } from "@/agents/checkpointer";
+import { prisma } from "@/lib/prisma";
 
 loadDotEnv();
-if (!process.env.RAG_EMBEDDING_PROVIDER && !process.env.EMBEDDING_API_KEY) {
-  process.env.RAG_EMBEDDING_PROVIDER = "deterministic";
+if (!process.env.RAG_EMBEDDING_PROVIDER) {
+  if (isAgentMockMode()) {
+    process.env.RAG_EMBEDDING_PROVIDER = "deterministic";
+  } else {
+    throw new Error(
+      "RAG_EMBEDDING_PROVIDER is required outside mock mode. Use openai-compatible in production or explicitly select deterministic for a local demo."
+    );
+  }
+}
+if (
+  process.env.RAG_EMBEDDING_PROVIDER === "openai-compatible" &&
+  !process.env.EMBEDDING_API_KEY &&
+  !process.env.OPENAI_API_KEY &&
+  !process.env.DEEPSEEK_API_KEY
+) {
+  throw new Error(
+    "An embedding API key is required for openai-compatible embeddings (EMBEDDING_API_KEY, OPENAI_API_KEY, or DEEPSEEK_API_KEY)."
+  );
 }
 
 const redisUrl = process.env.REDIS_URL;
@@ -24,12 +42,17 @@ if (!redisUrl) {
 }
 
 const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+const heartbeatKey = process.env.WORKER_HEARTBEAT_KEY ?? "investoday:agent-worker:heartbeat";
+const heartbeatTtlSeconds = positiveInteger(process.env.WORKER_HEARTBEAT_TTL_SECONDS, 30);
+const heartbeatIntervalMs = Math.max(1_000, Math.floor((heartbeatTtlSeconds * 1_000) / 3));
 const repository = new PrismaAgentRunRepository();
 const mockRuntime = isAgentMockMode() ? createMockAgentRuntime() : null;
 const toolRegistry = mockRuntime?.toolRegistry ?? createToolRegistry();
 const modelProvider = mockRuntime?.modelProvider ?? new OpenAIModelProvider();
 
-new Worker<AgentJob>(
+await initializeLangGraphCheckpointer();
+
+const worker = new Worker<AgentJob>(
   AGENT_QUEUE_NAME,
   async (job) => {
     const run = await getAgentRunForExecution(job.data.runId);
@@ -40,3 +63,39 @@ new Worker<AgentJob>(
 );
 
 console.log(`Agent Worker listening on queue ${AGENT_QUEUE_NAME}`);
+
+await publishHeartbeat();
+const heartbeatTimer = setInterval(() => void publishHeartbeat(), heartbeatIntervalMs);
+heartbeatTimer.unref();
+
+let shuttingDown = false;
+async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}; closing Agent Worker.`);
+  clearInterval(heartbeatTimer);
+  await connection.del(heartbeatKey).catch(() => undefined);
+  await Promise.allSettled([worker.close(), closeLangGraphCheckpointer(), prisma.$disconnect()]);
+  connection.disconnect();
+}
+
+process.once("SIGINT", () => void shutdown("SIGINT"));
+process.once("SIGTERM", () => void shutdown("SIGTERM"));
+
+async function publishHeartbeat() {
+  try {
+    await connection.set(
+      heartbeatKey,
+      JSON.stringify({ queue: AGENT_QUEUE_NAME, pid: process.pid, updatedAt: new Date().toISOString() }),
+      "EX",
+      heartbeatTtlSeconds
+    );
+  } catch (error) {
+    console.error(`Worker heartbeat failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}

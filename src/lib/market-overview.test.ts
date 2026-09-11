@@ -190,7 +190,7 @@ describe("market overview data aggregation", () => {
       }
       return fail(`unexpected endpoint ${args[0]}`);
     });
-    const fetchExternal = vi.fn(async () => ({
+    const fetchExternal = vi.fn<typeof fetch>(async () => ({
       ok: true,
       json: async () =>
         eastmoneyKlines([

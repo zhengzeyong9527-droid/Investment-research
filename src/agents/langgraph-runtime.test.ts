@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { executeAgentGraphJob, getAgentGraphNodeKeys } from "@/agents/langgraph-runtime";
 import { StaticModelProvider } from "@/agents/model-provider";
 import type { AgentRuntimeRepository, ExecutableAgentRun } from "@/agents/executor";
+import { mockToolCall } from "@/test/agent-fixtures";
 import type { ToolRegistry } from "@/tools/types";
 
 describe("langgraph runtime", () => {
@@ -156,7 +157,7 @@ describe("langgraph runtime", () => {
 
   it("retries failed verification at most twice before finalizing", async () => {
     const repository = createRepository();
-    const modelProvider = new StaticModelProvider("```html\n<div>visible source</div>\n```");
+    const modelProvider = new StaticModelProvider("贵州茅台渠道风险仍需观察；检测到非法标记 ```html-inline。");
     modelProvider.streamMarkdown = vi.fn(modelProvider.streamMarkdown);
 
     await executeAgentGraphJob({
@@ -233,11 +234,11 @@ function createToolRegistry(options: { emptyEvidence?: boolean } = {}): ToolRegi
       toolKey,
       description: toolKey,
       sourceEndpoint: toolKey,
-      riskLevel: "read",
+      riskLevel: "read" as const,
       timeoutMs: 1000,
       retry: 0,
     })),
-    call: vi.fn(async (toolKey, input) => ({
+    call: mockToolCall(async (toolKey, input) => ({
       toolCallId: `tool-${toolKey}`,
       data:
         toolKey === "memory.search"

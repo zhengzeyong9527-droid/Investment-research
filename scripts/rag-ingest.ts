@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { loadDotEnv } from "@/lib/load-env";
 import { getDefaultRagService, type RagLicenseStatus } from "@/rag/local-rag";
+import { parseRagDocumentType, type RagDocumentType } from "@/rag/chunkers/structured-chunker";
 
 loadDotEnv();
 
@@ -15,13 +16,16 @@ if (args.remove) {
 }
 
 if (args.files.length === 0) {
-  fail("Usage: pnpm rag:ingest --license-status internal --license-source <source> <file1.md> <file2.txt>");
+  fail("Usage: pnpm rag:ingest --document-type research-report --license-status internal --license-source <source> <file1.md> <file2.txt>");
 }
 if (!args.licenseStatus || !isLicenseStatus(args.licenseStatus)) {
   fail("RAG ingest requires --license-status authorized|internal|public.");
 }
 if (!args.licenseSource) {
   fail("RAG ingest requires --license-source so each chunk can be audited.");
+}
+if (args.documentTypeValue !== undefined && !args.documentType) {
+  fail("RAG ingest --document-type must be generic, news, announcement, or research-report.");
 }
 
 for (const file of args.files) {
@@ -30,6 +34,7 @@ for (const file of args.files) {
   const document = await getDefaultRagService().ingestDocument({
     title: args.title ?? path.basename(file),
     content,
+    documentType: args.documentType,
     source: args.source ?? "cli-ingest",
     sourceUrl: args.sourceUrl,
     publishedAt: args.publishedAt ?? null,
@@ -55,6 +60,8 @@ function parseArgs(argv: string[]) {
     title?: string;
     remove?: string;
     reason?: string;
+    documentType?: RagDocumentType;
+    documentTypeValue?: string;
   } = { files: [] };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -67,6 +74,10 @@ function parseArgs(argv: string[]) {
     if (inlineValue === undefined) index += 1;
     if (!value) fail(`Missing value for ${flag}.`);
     if (flag === "--license-status") parsed.licenseStatus = value as RagLicenseStatus;
+    else if (flag === "--document-type") {
+      parsed.documentTypeValue = value;
+      parsed.documentType = parseRagDocumentType(value) ?? undefined;
+    }
     else if (flag === "--license-source") parsed.licenseSource = value;
     else if (flag === "--source") parsed.source = value;
     else if (flag === "--source-url") parsed.sourceUrl = value;

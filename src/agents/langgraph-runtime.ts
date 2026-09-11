@@ -1,6 +1,6 @@
 ﻿import { Annotation, Command, END, INTERRUPT, START, StateGraph, isGraphInterrupt, isInterrupted } from "@langchain/langgraph";
 import type { AgentKey } from "@/agents/types";
-import { createLangGraphCheckpointer } from "@/agents/checkpointer";
+import { initializeLangGraphCheckpointer } from "@/agents/checkpointer";
 import { appendAssistantMessage, type AgentRuntimeRepository, type ExecutableAgentRun } from "@/agents/executor";
 import { createToolRegistry } from "@/tools/registry";
 import type { ToolRegistry } from "@/tools/types";
@@ -76,7 +76,7 @@ export function getAgentGraphNodeKeys(agentKey: AgentKey): string[] {
   return [...(agentKey === "market-broadcast-agent" ? MARKET_GRAPH_NODE_KEYS : RESEARCH_GRAPH_NODE_KEYS)];
 }
 
-export function compileAgentGraph(deps: AgentGraphDeps) {
+export async function compileAgentGraph(deps: AgentGraphDeps) {
   const nodes = createGraphNodes(deps);
   const graph = new StateGraph(AgentState) as any;
 
@@ -125,7 +125,7 @@ export function compileAgentGraph(deps: AgentGraphDeps) {
   graph.addEdge("commit_memory", "finalize");
   graph.addEdge("finalize", END);
 
-  const checkpointer = createLangGraphCheckpointer();
+  const checkpointer = await initializeLangGraphCheckpointer();
   return checkpointer ? graph.compile({ checkpointer }) : graph.compile();
 }
 
@@ -142,7 +142,7 @@ export async function executeAgentGraphJob(input: {
     toolRegistry: input.toolRegistry ?? mockRuntime?.toolRegistry ?? createToolRegistry(),
     modelProvider: input.modelProvider ?? mockRuntime?.modelProvider ?? new OpenAIModelProvider(),
   };
-  const compiled = compileAgentGraph(deps);
+  const compiled = await compileAgentGraph(deps);
   const thread_id = input.run.sessionId ?? input.run.id;
   const invokeInput = input.resumePayload ? new Command({ resume: input.resumePayload }) : initialGraphState(input.run);
   try {

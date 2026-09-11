@@ -232,7 +232,7 @@ describe("investoday health check", () => {
         "win32",
         "C:\\Users\\me\\AppData\\Roaming",
         "node.exe",
-        undefined,
+        "",
         ""
       )
     ).toEqual({
@@ -518,7 +518,7 @@ describe("watch target repair", () => {
         code: "002756",
         name: "永兴材料",
         tags: ["新能源", "锂电", "SZ", "主板"],
-        reason: "已有关注；关注材料价格",
+        reason: "已有关注，关注材料价格",
         enabled: true,
       },
     });

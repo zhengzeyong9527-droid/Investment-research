@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { executeAgentRunJob, type AgentRuntimeRepository, type ExecutableAgentRun } from "@/agents/executor";
 import { StaticModelProvider } from "@/agents/model-provider";
+import { mockToolCall } from "@/test/agent-fixtures";
 import type { ToolRegistry } from "@/tools/types";
 
 describe("agent evidence gaps", () => {
@@ -54,11 +55,11 @@ function createFailingToolRegistry(): ToolRegistry {
       toolKey,
       description: toolKey,
       sourceEndpoint: toolKey,
-      riskLevel: "read",
+      riskLevel: "read" as const,
       timeoutMs: 1000,
       retry: 0,
     })),
-    call: vi.fn(async (toolKey) => {
+    call: mockToolCall(async (toolKey) => {
       if (toolKey === "memory.search") return { toolCallId: "tool-memory", data: [] };
       if (toolKey === "stock.resolve") return { toolCallId: "tool-resolve", data: { code: "600519", name: "贵州茅台", type: "stock" } };
       if (toolKey === "entity.recognition") return { toolCallId: "tool-entity", data: { code: "600519", name: "贵州茅台", type: "stock" } };

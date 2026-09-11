@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createMockAgentRuntime, createMockToolRegistry, isAgentMockMode } from "@/agents/mock-runtime";
+import { testProcessEnv } from "@/test/agent-fixtures";
 
 describe("mock agent runtime", () => {
   it("detects mock mode from env", () => {
-    expect(isAgentMockMode({ AGENT_MOCK_MODE: "1" } as NodeJS.ProcessEnv)).toBe(true);
-    expect(isAgentMockMode({ AGENT_MOCK_MODE: "0" } as NodeJS.ProcessEnv)).toBe(false);
+    expect(isAgentMockMode(testProcessEnv({ AGENT_MOCK_MODE: "1" }))).toBe(true);
+    expect(isAgentMockMode(testProcessEnv({ AGENT_MOCK_MODE: "0" }))).toBe(false);
   });
 
   it("returns deterministic model output without external LLM", async () => {
-    const runtime = createMockAgentRuntime({ AGENT_MOCK_MODE: "1", MOCK_MODEL_OUTPUT: "稳定 mock 输出" } as NodeJS.ProcessEnv);
+    const runtime = createMockAgentRuntime(testProcessEnv({ AGENT_MOCK_MODE: "1", MOCK_MODEL_OUTPUT: "稳定 mock 输出" }));
     const output = await runtime.modelProvider.streamMarkdown("prompt", { agentRunId: "run-1" });
 
     expect(output).toBe("稳定 mock 输出");

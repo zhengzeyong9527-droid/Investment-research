@@ -2,6 +2,7 @@ import { defaultCommandRunner, InvestodayDataAdapter } from "@/lib/investoday";
 import { fetchMarketOverview } from "@/lib/market-overview";
 import { DEFAULT_AGENT_USER_ID, MemoryService } from "@/agents/memory";
 import { getDefaultRagService, type RagHit } from "@/rag/local-rag";
+import { parseRagDocumentType } from "@/rag/chunkers/structured-chunker";
 import type { ToolManifest, ToolRegistry, ToolRegistryOptions, ToolRuntimeContext } from "@/tools/types";
 
 const TOOL_MANIFESTS: ToolManifest[] = [
@@ -26,7 +27,12 @@ const TOOL_MANIFESTS: ToolManifest[] = [
   tool("concept.quote", "Fetch concept realtime quote", "concept-quote/realtime-v2"),
   tool("concept.stockRealtime", "Fetch concept component realtime quotes", "concept-quote/stock-realtime"),
   tool("valuation.data", "Fetch valuation data", "valuation.data"),
-  tool("rag.ingestDocument", "Ingest a local document into the RAG index", "rag.ingestDocument", "write"),
+  tool(
+    "rag.ingestDocument",
+    "Ingest a local document into the RAG index; documentType is generic, news, announcement, or research-report",
+    "rag.ingestDocument",
+    "write"
+  ),
   tool("rag.search", "Search local RAG chunks", "rag.search"),
   tool("rag.hybridSearch", "Hybrid search local RAG chunks", "rag.hybridSearch"),
   tool("rag.rerank", "Rerank local RAG hits", "rag.rerank"),
@@ -311,9 +317,14 @@ async function executeTool(toolKey: string, input: Record<string, unknown>, run:
     const title = stringOrUndefined(input.title);
     const content = stringOrUndefined(input.content);
     if (!title || !content) throw new Error("rag.ingestDocument requires title and content");
+    const documentType = input.documentType === undefined ? undefined : parseRagDocumentType(input.documentType);
+    if (input.documentType !== undefined && !documentType) {
+      throw new Error("rag.ingestDocument documentType must be generic, news, announcement, or research-report");
+    }
     return getDefaultRagService().ingestDocument({
       title,
       content,
+      documentType: documentType ?? undefined,
       source: stringOrUndefined(input.source) ?? "local-upload",
       sourceUrl: stringOrUndefined(input.sourceUrl) ?? null,
       publishedAt: stringOrUndefined(input.publishedAt) ?? null,

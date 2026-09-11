@@ -46,6 +46,134 @@ describe("local RAG service", () => {
     expect(chunks[1].content.startsWith(chunks[0].content.slice(-10))).toBe(true);
   });
 
+  it("uses the document-type strategy and persists chunk provenance metadata", async () => {
+    const store = new InMemoryRagStore();
+    const embedTexts = vi.fn(async (texts: string[]) => texts.map(() => [1, 0, 0, 0]));
+    const service = new LocalRagService({
+      store,
+      embeddingProvider: { dimensions: 4, embedTexts },
+    });
+
+    const document = await service.ingestDocument({
+      title: "公司动态研究",
+      documentType: "research-report",
+      content: "核心观点\nCDMO收入保持增长，项目储备持续增加。\n\n风险提示\n订单转化不及预期。",
+      metadata: { stockCode: "000739" },
+    });
+    const chunks = await store.listChunks();
+
+    expect(document.metadata).toMatchObject({ stockCode: "000739", ragDocumentType: "research-report" });
+    expect(chunks).toHaveLength(document.chunkCount);
+    expect(chunks[0].metadata).toMatchObject({
+      stockCode: "000739",
+      ragDocumentType: "research-report",
+      ragContentNormalization: "whitespace-v1",
+      ragChunkStrategy: "structure-aware-v1",
+      ragChunkHeading: "核心观点",
+      ragChunkOffsetBasis: "document.content",
+      ragChunkCharStart: expect.any(Number),
+      ragChunkCharEnd: expect.any(Number),
+      ragChunkContentHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(embedTexts).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.stringMatching(/^公司动态研究\n核心观点\nCDMO收入保持增长/)]),
+    );
+
+    const hits = await service.search({ query: "风险提示", topK: 3 });
+    expect(hits[0].metadata.ragChunkHeading).toBe("风险提示");
+    expect(hits[0].lexicalScore).toBeGreaterThan(0);
+  });
+
+  it("replaces stale chunks when the same document is ingested again", async () => {
+    const store = new InMemoryRagStore();
+    const service = new LocalRagService({
+      store,
+      embeddingProvider: new DeterministicEmbeddingProvider(4),
+    });
+    const input = {
+      title: "重复摄取测试",
+      source: "test",
+      content: "核心观点\n第一条证据。第二条证据。",
+    };
+    const document = await service.ingestDocument(input);
+    const current = (await store.listChunks())[0];
+    const { createdAt: _createdAt, ...documentInput } = document;
+    await store.replaceDocument(documentInput, [
+      {
+        ...current,
+        id: "stale-chunk",
+        content: "旧切块不应继续存在",
+      },
+    ]);
+
+    const reingested = await service.ingestDocument(input);
+    const chunks = await store.listChunks();
+
+    expect(chunks).toHaveLength(reingested.chunkCount);
+    expect(chunks.some((chunk) => chunk.id === "stale-chunk")).toBe(false);
+  });
+
+  it("stores the normalized text used by chunk offsets", async () => {
+    const store = new InMemoryRagStore();
+    const service = new LocalRagService({
+      store,
+      embeddingProvider: new DeterministicEmbeddingProvider(4),
+    });
+
+    const document = await service.ingestDocument({
+      title: "位置测试",
+      content: "  核心观点\r\n收入增长。\u00a0\r\n\r\n\r\n风险提示\r\n订单不及预期。  ",
+      documentType: "research-report",
+    });
+    const chunks = await store.listChunks();
+
+    expect(document.content).toBe("核心观点\n收入增长。\n\n风险提示\n订单不及预期。");
+    for (const chunk of chunks) {
+      const start = Number(chunk.metadata.ragChunkCharStart);
+      const end = Number(chunk.metadata.ragChunkCharEnd);
+      expect(document.content.slice(start, end)).toBe(chunk.content);
+    }
+  });
+
+  it.each([
+    { name: "missing vectors", vectors: [] as number[][], error: "returned 0 vectors" },
+    { name: "wrong dimensions", vectors: [[1, 2, 3]], error: "expected 4" },
+    { name: "non-finite values", vectors: [[1, 2, 3, Number.NaN]], error: "non-finite" },
+  ])("rejects $name before changing the store", async ({ vectors, error }) => {
+    const replaceDocument = vi.fn<RagStore["replaceDocument"]>();
+    const store: RagStore = {
+      replaceDocument,
+      listDocuments: vi.fn(async () => []),
+      listChunks: vi.fn(async () => []),
+    };
+    const service = new LocalRagService({
+      store,
+      embeddingProvider: { dimensions: 4, embedTexts: vi.fn(async () => vectors) },
+    });
+
+    await expect(
+      service.ingestDocument({ title: "错误向量", content: "这是一段正文。" }),
+    ).rejects.toThrow(error);
+    expect(replaceDocument).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid query embedding before searching the store", async () => {
+    const searchChunks = vi.fn(async () => []);
+    const store: RagStore = {
+      replaceDocument: vi.fn(async (input) => ({ ...input, createdAt: new Date() })),
+      listDocuments: vi.fn(async () => []),
+      listChunks: vi.fn(async () => []),
+      searchChunks,
+    };
+    const service = new LocalRagService({
+      store,
+      embeddingProvider: { dimensions: 4, embedTexts: vi.fn(async () => [[1, 2, 3]]) },
+    });
+
+    await expect(service.search({ query: "风险提示" })).rejects.toThrow("expected 4");
+    expect(searchChunks).not.toHaveBeenCalled();
+  });
+
   it("boosts Chinese title and metadata matches for seed document recall", async () => {
     const service = new LocalRagService({
       store: new InMemoryRagStore(),
@@ -115,8 +243,7 @@ describe("local RAG service", () => {
 
   it("delegates search to store searchChunks instead of listing every chunk when available", async () => {
     const store: RagStore = {
-      upsertDocument: vi.fn(async (input: Omit<RagDocumentRecord, "createdAt">) => ({ ...input, createdAt: new Date() })),
-      upsertChunks: vi.fn(async () => undefined),
+      replaceDocument: vi.fn(async (input: Omit<RagDocumentRecord, "createdAt">) => ({ ...input, createdAt: new Date() })),
       listDocuments: vi.fn(async () => []),
       listChunks: vi.fn(async () => {
         throw new Error("listChunks should not be used");
@@ -128,7 +255,7 @@ describe("local RAG service", () => {
           title: "数据库侧候选",
           content: "pgvector candidate",
           source: "db",
-          licenseStatus: "authorized",
+          licenseStatus: "authorized" as const,
           score: 0.9,
           lexicalScore: 0.5,
           vectorScore: 0.95,

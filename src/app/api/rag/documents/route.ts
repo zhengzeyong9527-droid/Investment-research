@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkRateLimit, requireAppAuth } from "@/lib/api-security";
 import { getDefaultRagService } from "@/rag/local-rag";
+import { parseRagDocumentType } from "@/rag/chunkers/structured-chunker";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +21,17 @@ export async function POST(request: Request) {
   if (!title || !content) {
     return NextResponse.json({ code: "BAD_REQUEST", message: "title and content are required." }, { status: 400 });
   }
+  const documentType = body.documentType === undefined ? undefined : parseRagDocumentType(body.documentType);
+  if (body.documentType !== undefined && !documentType) {
+    return NextResponse.json(
+      { code: "BAD_REQUEST", message: "documentType must be generic, news, announcement, or research-report." },
+      { status: 400 }
+    );
+  }
   const document = await getDefaultRagService().ingestDocument({
     title,
     content,
+    documentType: documentType ?? undefined,
     source: stringValue(body.source) || "api-upload",
     publishedAt: stringValue(body.publishedAt) || null,
     metadata: metadataValue(body.metadata),

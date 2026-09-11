@@ -5,6 +5,7 @@ import type { AnalysisRepository } from "@/lib/analysis";
 import type { DailyBriefRepository } from "@/lib/briefs";
 import { buildBriefItemDisplay, cleanDisplayText } from "@/lib/display";
 import { prisma } from "@/lib/prisma";
+import { toPrismaJson } from "@/lib/prisma-json";
 import type { BriefDraft, NormalizedWatchTarget } from "@/lib/types";
 
 export const watchTargetSelect = {
@@ -38,7 +39,7 @@ export async function createWatchTarget(input: NormalizedWatchTarget) {
   const target = await prisma.watchTarget.create({
     data: {
       ...input,
-      tags: jsonArray(input.tags),
+      tags: toPrismaJson(jsonArray(input.tags)),
     },
     select: watchTargetSelect,
   });
@@ -52,7 +53,7 @@ export async function updateWatchTarget(id: string, input: Partial<NormalizedWat
       ...(input.type ? { type: input.type } : {}),
       ...(input.code ? { code: input.code } : {}),
       ...(input.name ? { name: input.name } : {}),
-      ...(input.tags ? { tags: jsonArray(input.tags) } : {}),
+      ...(input.tags ? { tags: toPrismaJson(jsonArray(input.tags)) } : {}),
       ...(input.reason !== undefined ? { reason: input.reason } : {}),
       ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
     },
@@ -158,23 +159,23 @@ export class PrismaAnalysisRepository implements AnalysisRepository {
         skillKey: data.skillKey,
         triggerType: "legacy-analysis-placeholder",
         status: analysisStatusToAgentStatus(data.status),
-        inputPayload: {
+        inputPayload: toPrismaJson({
           legacyAnalysis: true,
           targetId: data.targetId ?? null,
           briefItemId: data.briefItemId ?? null,
           dailyBriefId: data.dailyBriefId ?? null,
           context: legacyContext,
-        },
+        }),
         promptPackage: data.inputContext,
         outputMarkdown: data.output,
-        outputJson: {
+        outputJson: toPrismaJson({
           legacyAnalysis: {
             status: data.status,
             targetId: data.targetId ?? null,
             briefItemId: data.briefItemId ?? null,
             dailyBriefId: data.dailyBriefId ?? null,
           },
-        },
+        }),
       },
     });
     return {
@@ -225,7 +226,7 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
         skillKey: data.skillKey,
         triggerType: data.triggerType ?? "manual",
         status: data.status,
-        inputPayload: jsonObject(data.inputPayload),
+        inputPayload: toPrismaJson(jsonObject(data.inputPayload)),
         promptPackage: data.promptPackage,
       },
     });
@@ -255,8 +256,8 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
       where: { id },
       data: {
         ...rest,
-        ...(outputJson !== undefined ? { outputJson: jsonObject(outputJson ?? {}) } : {}),
-        ...(inputPayload !== undefined ? { inputPayload: jsonObject(inputPayload) } : {}),
+        ...(outputJson !== undefined ? { outputJson: toPrismaJson(jsonObject(outputJson ?? {})) } : {}),
+        ...(inputPayload !== undefined ? { inputPayload: toPrismaJson(jsonObject(inputPayload)) } : {}),
       },
     });
     return shapeAgentRun(run);
@@ -365,7 +366,7 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
         skillKey: data.skillKey,
         skillPath: data.skillPath,
         status: data.status,
-        inputPayload: jsonObject(data.inputPayload),
+        inputPayload: toPrismaJson(jsonObject(data.inputPayload)),
         promptPackage: data.promptPackage,
       },
     });
@@ -414,7 +415,7 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
       data: {
         agentRunId: data.agentRunId,
         toolKey: data.toolKey,
-        inputJson: jsonObject(data.inputJson),
+        inputJson: toPrismaJson(jsonObject(data.inputJson)),
         outputSummary: data.outputSummary,
         rawPayloadRef: data.rawPayloadRef,
         status: data.status,
@@ -476,7 +477,7 @@ export class PrismaAgentRunRepository implements AgentRunRepository {
         runId: data.runId,
         rating: data.rating,
         comment: data.comment ?? "",
-        tags: jsonArray(data.tags ?? []),
+        tags: toPrismaJson(jsonArray(data.tags ?? [])),
       },
     });
   }
@@ -610,7 +611,7 @@ export async function createEvidenceRecords(agentRunId: string, records: Evidenc
       publishedAt: record.publishedAt,
       summary: record.summary ?? "",
       sourceEndpoint: record.sourceEndpoint ?? "",
-      rawPayload: jsonValue(record.rawPayload) ?? {},
+      rawPayload: toPrismaJson(jsonValue(record.rawPayload) ?? {}),
     })),
   });
   return listEvidenceRecords(agentRunId);

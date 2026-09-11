@@ -266,6 +266,16 @@ describe("MarketOverviewView", () => {
     });
   });
 
+  it("reports weak market conditions to the shell", async () => {
+    const onMarketWeakChange = vi.fn();
+
+    render(<MarketOverviewView setLoading={vi.fn()} setNotice={vi.fn()} onMarketWeakChange={onMarketWeakChange} />);
+
+    await waitFor(() => {
+      expect(onMarketWeakChange).toHaveBeenCalledWith(true);
+    });
+  });
+
   it("shows a recoverable error state when the market request fails", async () => {
     vi.stubGlobal(
       "fetch",

@@ -29,10 +29,12 @@ export function MarketOverviewView({
   setLoading,
   setNotice,
   onAgentCreated,
+  onMarketWeakChange,
 }: {
   setLoading: (value: boolean) => void;
   setNotice: (value: string) => void;
   onAgentCreated?: (id: string) => Promise<void>;
+  onMarketWeakChange?: (weak: boolean) => void;
 }) {
   const [selectedIndexCode, setSelectedIndexCode] = useState("000001");
   const [overview, setOverview] = useState<MarketOverview | null>(null);
@@ -51,9 +53,11 @@ export function MarketOverviewView({
         const data = await fetchJson<MarketOverview>(`/api/market-overview?indexCode=${indexCode}`);
         setOverview(data);
         setError("");
+        onMarketWeakChange?.(isMarketWeak(data));
         setNotice(data.sourceErrors.length > 0 ? `大盘数据已刷新，${data.sourceErrors.length} 项数据暂不可用` : `大盘数据已刷新 ${data.updatedAt}`);
       } catch {
         setError("大盘数据获取失败");
+        onMarketWeakChange?.(false);
         setNotice("大盘数据获取失败");
       } finally {
         if (!quiet) {
@@ -62,7 +66,7 @@ export function MarketOverviewView({
         }
       }
     },
-    [setLoading, setNotice]
+    [onMarketWeakChange, setLoading, setNotice]
   );
 
   useEffect(() => {
@@ -554,6 +558,11 @@ function buildBreadthOption(overview: MarketOverview | null): EChartsOption {
 function marketTone(value: number | null) {
   if (typeof value !== "number" || !Number.isFinite(value) || value === 0) return "flat";
   return value > 0 ? "up" : "down";
+}
+
+function isMarketWeak(overview: MarketOverview) {
+  const selectedQuote = overview.indexQuotes.find((quote) => quote.code === overview.selectedIndexCode) ?? overview.indexQuotes[0];
+  return overview.breadth.upRatio < 0.35 || (typeof selectedQuote?.changeRatio === "number" && selectedQuote.changeRatio <= -0.008);
 }
 
 function heatTileStyle(value: number | null, intensity: number): CSSProperties {

@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowLeft, Check, Clock3, Flame, Plus, Sparkles, TrendingUp } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ApiRequestError, postJson } from "@/components/workbench/api";
 import type { HotspotDetail, HotspotStockQuote } from "@/components/workbench/types";
@@ -50,10 +51,10 @@ export function HotspotDetailView({ detail }: { detail: HotspotDetail }) {
     <main className="glass-shell min-h-screen bg-terminal px-6 py-7 text-ink max-sm:px-4">
       <div className="grain" />
       <div className="relative mx-auto max-w-7xl">
-        <a href="/" className="mb-5 inline-flex items-center gap-2 rounded-md border border-jade/20 bg-white/70 px-3 py-2 text-sm font-semibold text-jade shadow-sm backdrop-blur hover:border-jade/45 hover:bg-white">
+        <Link href="/" className="mb-5 inline-flex items-center gap-2 rounded-md border border-jade/20 bg-white/70 px-3 py-2 text-sm font-semibold text-jade shadow-sm backdrop-blur hover:border-jade/45 hover:bg-white">
           <ArrowLeft size={16} />
           返回工作台
-        </a>
+        </Link>
 
         <section
           aria-label={`${detail.hotspot.name}热点详情`}

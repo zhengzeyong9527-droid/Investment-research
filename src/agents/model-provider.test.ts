@@ -1,15 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { OpenAIModelProvider } from "@/agents/model-provider";
 import { getLlmConfig } from "@/lib/model-config";
+import { testProcessEnv } from "@/test/agent-fixtures";
 
 describe("LLM model provider", () => {
   it("prefers DeepSeek OpenAI-compatible configuration", async () => {
-    const config = getLlmConfig({
+    const config = getLlmConfig(testProcessEnv({
       LLM_PROVIDER: "deepseek",
       DEEPSEEK_API_KEY: "test-deepseek-key",
       DEEPSEEK_MODEL: "deepseek-v4-flash",
       DEEPSEEK_BASE_URL: "https://api.deepseek.com",
-    } as NodeJS.ProcessEnv);
+    }));
     expect(config).toMatchObject({
       provider: "deepseek",
       model: "deepseek-v4-flash",
@@ -17,7 +18,7 @@ describe("LLM model provider", () => {
       configured: true,
     });
 
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn<typeof fetch>(async () =>
       Response.json({
         choices: [{ message: { content: "盘面播报内容" } }],
         usage: { prompt_tokens: 10, completion_tokens: 6 },

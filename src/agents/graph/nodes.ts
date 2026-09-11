@@ -129,7 +129,7 @@ async function normalizeInputNode(state: AgentGraphState, deps: AgentGraphDeps):
   return { inputPayload: normalizedInput, resumedFromInterrupt: false };
 }
 
-async function checkMissingNode(state: AgentGraphState, deps: AgentGraphDeps): Promise<Partial<AgentGraphState>> {
+async function checkMissingNode(state: AgentGraphState, _deps: AgentGraphDeps): Promise<Partial<AgentGraphState>> {
   const missingInputs = missingRequiredInputs(state.skillKey, state.inputPayload);
   if (missingInputs.length === 0) return { interrupt: null, resumedFromInterrupt: false };
 

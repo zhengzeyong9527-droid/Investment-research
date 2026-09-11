@@ -25,6 +25,23 @@ services:
       timeout: 3s
       retries: 20
 
+  db-init:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+      - pnpm-store:/root/.local/share/pnpm/store
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/investoday_agent
+    command: >
+      sh -c "corepack enable &&
+      pnpm install --frozen-lockfile &&
+      pnpm db:bootstrap"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   web:
     image: node:22-alpine
     working_dir: /app
@@ -36,20 +53,27 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/investoday_agent
       REDIS_URL: redis://redis:6379
-      RAG_EMBEDDING_PROVIDER: deterministic
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-deepseek-v4-flash}
-      APP_AUTH_TOKEN: ${APP_AUTH_TOKEN:-}
+      # The Compose profile is a local/demo stack. Production must use an
+      # OpenAI-compatible embedding provider with the same fixed dimension.
+      RAG_EMBEDDING_PROVIDER: "${RAG_EMBEDDING_PROVIDER:-deterministic}"
+      EMBEDDING_BASE_URL: "${EMBEDDING_BASE_URL:-https://api.openai.com/v1}"
+      EMBEDDING_API_KEY: "${EMBEDDING_API_KEY:-}"
+      EMBEDDING_MODEL: "${EMBEDDING_MODEL:-text-embedding-3-small}"
+      EMBEDDING_DIMENSIONS: "${EMBEDDING_DIMENSIONS:-1536}"
+      WORKER_HEARTBEAT_KEY: "${WORKER_HEARTBEAT_KEY:-investoday:agent-worker:heartbeat}"
+      WORKER_HEARTBEAT_TTL_SECONDS: "${WORKER_HEARTBEAT_TTL_SECONDS:-30}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-deepseek-v4-flash}"
+      APP_AUTH_TOKEN: "${APP_AUTH_TOKEN:-}"
     command: >
       sh -c "corepack enable &&
       pnpm install --frozen-lockfile &&
-      pnpm db:push &&
       pnpm build &&
       pnpm start"
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 
@@ -62,19 +86,25 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/investoday_agent
       REDIS_URL: redis://redis:6379
-      RAG_EMBEDDING_PROVIDER: deterministic
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_MODEL: ${OPENAI_MODEL:-deepseek-v4-flash}
-      APP_AUTH_TOKEN: ${APP_AUTH_TOKEN:-}
+      # Deterministic embeddings are kept for the local/demo stack only.
+      RAG_EMBEDDING_PROVIDER: "${RAG_EMBEDDING_PROVIDER:-deterministic}"
+      EMBEDDING_BASE_URL: "${EMBEDDING_BASE_URL:-https://api.openai.com/v1}"
+      EMBEDDING_API_KEY: "${EMBEDDING_API_KEY:-}"
+      EMBEDDING_MODEL: "${EMBEDDING_MODEL:-text-embedding-3-small}"
+      EMBEDDING_DIMENSIONS: "${EMBEDDING_DIMENSIONS:-1536}"
+      WORKER_HEARTBEAT_KEY: "${WORKER_HEARTBEAT_KEY:-investoday:agent-worker:heartbeat}"
+      WORKER_HEARTBEAT_TTL_SECONDS: "${WORKER_HEARTBEAT_TTL_SECONDS:-30}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-deepseek-v4-flash}"
+      APP_AUTH_TOKEN: "${APP_AUTH_TOKEN:-}"
     command: >
       sh -c "corepack enable &&
       pnpm install --frozen-lockfile &&
-      pnpm db:push &&
       pnpm worker:agent"
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 

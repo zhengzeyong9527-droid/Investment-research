@@ -27,7 +27,7 @@ describe("hotspot API routes", () => {
       sourceErrors: [],
     });
 
-    const response = await getHotspots(new Request("http://localhost/api/hotspots"));
+    const response = await getHotspots();
 
     expect(fetchHotspots).toHaveBeenCalledWith();
     expect(response.status).toBe(200);

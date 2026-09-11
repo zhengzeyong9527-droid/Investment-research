@@ -30,7 +30,6 @@ describe("interrupted run resume helpers", () => {
   it("treats confirmation messages as supplements for risk-confirm interrupts", () => {
     expect(
       isSupplementForInterruptedRun("yes", {
-        id: "run-risk",
         status: "interrupted",
         outputJson: { interrupt: { type: "risk_confirm" } },
       })
